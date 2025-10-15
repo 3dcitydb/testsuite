@@ -1,0 +1,57 @@
+version: '3.8'
+
+x-tester-base: &tester-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  volumes:
+    - ./data:/data
+    - ./output:/output
+    - ./config:/config
+    - ./scripts:/scripts
+  depends_on:
+    db:
+      condition: service_healthy
+
+# ---------------------------------------------------------------------------
+# --- SERVICE DEFINITIONS ---
+# These are the actual services that Docker will run.
+# ---------------------------------------------------------------------------
+services:
+  db:
+    image: 3dcitydb/3dcitydb-pg
+    environment:
+      - POSTGRES_USER=citydb
+      - POSTGRES_PASSWORD=test
+      - POSTGRES_DB=citydb
+      - SRID=25832
+    volumes:
+      - citydb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citydb -d citydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Default service to run all tests
+  test-all:
+    <<: *tester-base
+    entrypoint: /bin/bash
+    command: /scripts/run_all_tests.sh
+
+  # Service to run only the IMPORT test
+  test-import:
+    <<: *tester-base
+    profiles: ["import"]
+    entrypoint: /bin/bash
+    command: /scripts/test_import.sh
+
+  # Service to run only the EXPORT test
+  test-export:
+    <<: *tester-base
+    profiles: ["export"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export.sh
+
+volumes:
+  citydb_data:
