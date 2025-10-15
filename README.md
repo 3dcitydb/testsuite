@@ -232,3 +232,48 @@ citydb-tool and integration tests for interactions between modules.
 This README provides a roadmap for establishing a robust testing foundation for 3DCityDB 5.0 and the citydb-tool. By
 starting with essential scenarios in a controlled Docker environment, we can systematically build a comprehensive and
 reliable test suite.
+
+## 7. Executing the Test Suite
+
+This section provides instructions on how to run the automated tests using Docker Compose.
+
+### Prerequisites
+Before running the tests, ensure you have the following installed on your system:
+
+- Docker
+- Docker Compose
+
+### Running the Full Test Suite
+The easiest way to run all tests in the correct sequence (import, then export) is to use the default test-all service.
+
+From the root directory of the project, run the following command:
+
+```bash
+docker compose up --build --exit-code-from test-all
+```
+- --build: This flag tells Docker Compose to build the custom tester image from the Dockerfile if it doesn't exist or if the Dockerfile has changed.
+- --exit-code-from test-all: This makes the command exit with the same code as the test-all container. This is crucial for automation, as it will return a non-zero code if any test fails, signaling a failure in a CI/CD pipeline.
+
+### Running Individual Tests
+You can run specific tests individually using Docker Compose profiles. This is useful for debugging a particular feature without running the entire suite.
+
+To run only the import test:
+```Bash
+
+docker compose --profile import up --build --exit-code-from test-import
+```
+To run only the export test:
+This assumes the database already contains data from a previous import.
+
+```Bash
+
+docker compose --profile export up --build --exit-code-from test-export
+```
+### Cleaning Up the Environment
+After a test run, you can completely remove all containers, networks, and the database volume to ensure a clean state for the next run.
+
+```Bash
+
+docker compose down -v
+```
+The -v flag is important as it removes the named volume containing the PostgreSQL data. Without it, the data would persist between runs.
