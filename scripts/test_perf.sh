@@ -12,6 +12,14 @@ set -e
 
 source /scripts/test_helpers.sh
 
+# When run standalone (not via run_all_tests.sh), generate our own report.
+if [ -z "$REPORT_FILE" ]; then
+  TIMESTAMP=$(date '+%Y-%m-%d_%H%M%S')
+  export REPORT_FILE="/output/report_perf_${TIMESTAMP}.md"
+  report_init
+  report_section "Performance Test"
+fi
+
 BUILDING_COUNT="${BUILDING_COUNT:-10000}"
 CONFIG_IMPORT="/config/config_citygml_import.json"
 CONFIG_EXPORT="/config/config_citygml_export.json"
@@ -59,6 +67,9 @@ echo "  Import config:     $CONFIG_IMPORT"
 echo "  Export config:     $CONFIG_EXPORT"
 echo ""
 
+report_line "**Configuration:** $BUILDING_COUNT buildings"
+report_line ""
+
 # ---------------------------------------------------------------------------
 # Phase 1: Generate synthetic dataset
 # ---------------------------------------------------------------------------
@@ -75,6 +86,11 @@ echo "  Generated $BUILDING_COUNT buildings in $(format_duration $GEN_ELAPSED)"
 echo "  File size: $(format_bytes $FILE_SIZE) ($FILE_SIZE bytes)"
 echo ""
 
+report_line "### Data Generation"
+report_line "- Generated **$BUILDING_COUNT** buildings in **$(format_duration $GEN_ELAPSED)**"
+report_line "- File size: **$(format_bytes $FILE_SIZE)** ($FILE_SIZE bytes)"
+report_line ""
+
 # ---------------------------------------------------------------------------
 # Phase 2: Import
 # ---------------------------------------------------------------------------
@@ -90,6 +106,9 @@ IMP_END=$(date +%s)
 IMP_ELAPSED=$((IMP_END - IMP_START))
 echo "  Import completed in $(format_duration $IMP_ELAPSED)"
 echo ""
+
+report_line "### Import"
+report_line "- Duration: **$(format_duration $IMP_ELAPSED)**"
 
 # ---------------------------------------------------------------------------
 # Phase 3: Import Validation
@@ -110,6 +129,9 @@ echo "  RoofSurfaces in DB:  $ROOF_COUNT"
 echo "  Total features:      $TOTAL_FEATURES"
 echo ""
 
+report_line "- Buildings: $BUILDING_COUNT_DB | Walls: $WALL_COUNT | Roofs: $ROOF_COUNT | Total: $TOTAL_FEATURES"
+report_line ""
+
 # ---------------------------------------------------------------------------
 # Phase 4: Export
 # ---------------------------------------------------------------------------
@@ -129,6 +151,11 @@ EXPORT_SIZE=$(stat -c %s "$EXPORT_FILE" 2>/dev/null || stat -f %z "$EXPORT_FILE"
 echo "  Export file size: $(format_bytes $EXPORT_SIZE) ($EXPORT_SIZE bytes)"
 echo ""
 
+report_line "### Export"
+report_line "- Duration: **$(format_duration $EXP_ELAPSED)**"
+report_line "- Export size: **$(format_bytes $EXPORT_SIZE)** ($EXPORT_SIZE bytes)"
+report_line ""
+
 # ---------------------------------------------------------------------------
 # Phase 5: Database Statistics
 # ---------------------------------------------------------------------------
@@ -140,11 +167,18 @@ DB_SIZE=$(db_query "SELECT pg_database_size('$DB_NAME');")
 echo "  Total database size: $(format_bytes $DB_SIZE)"
 echo ""
 
+report_line "### Database Statistics"
+report_line "- Total DB size: **$(format_bytes $DB_SIZE)**"
+report_line ""
+
 # Table sizes (top tables by total size)
 echo "  Table Sizes (top 10 by total size):"
 echo "  -----------------------------------------------------------"
 printf "  %-30s %12s %12s %12s\n" "TABLE" "DATA" "INDEXES" "TOTAL"
 echo "  -----------------------------------------------------------"
+
+report_line "| Table | Data | Indexes | Total |"
+report_line "|-------|------|---------|-------|"
 
 db_query "
   SELECT
@@ -169,16 +203,21 @@ db_query "
       "$(format_bytes "$data_sz")" \
       "$(format_bytes "$idx_sz")" \
       "$(format_bytes "$total_sz")"
+    report_line "| $tbl | $(format_bytes "$data_sz") | $(format_bytes "$idx_sz") | $(format_bytes "$total_sz") |"
   fi
 done
 
 echo ""
+report_line ""
 
 # Table activity stats
 echo "  Table Activity (pg_stat_user_tables):"
 echo "  -----------------------------------------------------------"
 printf "  %-30s %10s %10s %12s\n" "TABLE" "SEQ_SCAN" "IDX_SCAN" "LIVE_TUPLES"
 echo "  -----------------------------------------------------------"
+
+report_line "| Table | Seq Scans | Idx Scans | Live Tuples |"
+report_line "|-------|-----------|-----------|-------------|"
 
 db_query "
   SELECT
@@ -197,10 +236,12 @@ db_query "
   tup=$(echo "$tup" | xargs)
   if [ -n "$tbl" ]; then
     printf "  %-30s %10s %10s %12s\n" "$tbl" "$seq" "$idx" "$tup"
+    report_line "| $tbl | $seq | $idx | $tup |"
   fi
 done
 
 echo ""
+report_line ""
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -221,6 +262,16 @@ echo "  Export:        $(format_duration $EXP_ELAPSED)"
 echo "  Total:         $(format_duration $TOTAL_ELAPSED)"
 echo "============================================"
 
+report_line "### Timing Summary"
+report_line "- Generation: **$(format_duration $GEN_ELAPSED)**"
+report_line "- Import: **$(format_duration $IMP_ELAPSED)**"
+report_line "- Export: **$(format_duration $EXP_ELAPSED)**"
+report_line "- **Total: $(format_duration $TOTAL_ELAPSED)**"
+report_line ""
+
 # Clean up generated file to save space
 rm -f "$GENERATED_FILE"
 echo "  Cleaned up generated file."
+
+echo ""
+echo "Report saved to: $REPORT_FILE"

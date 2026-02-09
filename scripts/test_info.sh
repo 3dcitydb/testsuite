@@ -23,6 +23,7 @@ echo ""
 echo "--- Test: Database info ---"
 citydb info --db-host=db --db-name=citydb --db-username=citydb --db-password=test
 echo "PASS: Info command succeeded"
+report_line "- PASS: Info command succeeded"
 
 echo ""
 echo "=== Info Command Tests PASSED ==="

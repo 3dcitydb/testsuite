@@ -38,10 +38,13 @@ echo "Second import count: $COUNT_SECOND"
 
 if [ "$COUNT_SECOND" -eq "$COUNT_FIRST" ]; then
   echo "PASS: Duplicate handling - tool performed upsert/skip (count unchanged)"
+  report_line "- PASS: Duplicate handling — upsert/skip (count unchanged at $COUNT_FIRST)"
 elif [ "$COUNT_SECOND" -gt "$COUNT_FIRST" ]; then
   echo "PASS: Duplicate handling - tool inserted duplicates (count increased from $COUNT_FIRST to $COUNT_SECOND)"
+  report_line "- PASS: Duplicate handling — duplicates inserted ($COUNT_FIRST -> $COUNT_SECOND)"
 else
   echo "FAIL: Duplicate handling - unexpected behavior (count decreased)"
+  report_line "- **FAIL:** Duplicate handling — unexpected count decrease ($COUNT_FIRST -> $COUNT_SECOND)"
   exit 1
 fi
 
