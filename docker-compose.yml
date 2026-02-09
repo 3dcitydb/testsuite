@@ -9,6 +9,9 @@ x-tester-base: &tester-base
     - ./output:/output
     - ./config:/config
     - ./scripts:/scripts
+  environment:
+    - CITYGML_DATASET=${CITYGML_DATASET:-}
+    - SKIP_TESTS=${SKIP_TESTS:-}
   depends_on:
     db:
       condition: service_healthy
@@ -121,6 +124,8 @@ services:
     <<: *tester-base
     profiles: ["perf"]
     environment:
+      - CITYGML_DATASET=${CITYGML_DATASET:-}
+      - SKIP_TESTS=${SKIP_TESTS:-}
       - BUILDING_COUNT=${BUILDING_COUNT:-10000}
     entrypoint: /bin/bash
     command: /scripts/test_perf.sh

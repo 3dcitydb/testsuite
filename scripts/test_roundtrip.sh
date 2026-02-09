@@ -5,7 +5,7 @@ source /scripts/test_helpers.sh
 
 CONFIG_IMPORT="/config/config_citygml_import.json"
 CONFIG_EXPORT="/config/config_citygml_export.json"
-INPUT_FILE="/data/synthetic/minimal_building.gml"
+INPUT_FILE=$(resolve_citygml_input "/data/synthetic/minimal_building.gml")
 OUTPUT_FILE="/output/roundtrip_export.gml"
 
 echo "=== Roundtrip Tests ==="

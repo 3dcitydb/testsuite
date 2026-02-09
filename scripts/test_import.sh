@@ -4,9 +4,10 @@ set -e
 source /scripts/test_helpers.sh
 
 CONFIG_FILE="/config/config_citygml_import.json"
-INPUT_FILE="/data/Railway_Scene/Railway_Scene_LoD3.gml"
+INPUT_FILE=$(resolve_citygml_input "/data/Railway_Scene/Railway_Scene_LoD3.gml")
 
 echo "Running IMPORT test..."
+echo "  Input file: $INPUT_FILE"
 echo "-------------------------------------------"
 
 citydb --config $CONFIG_FILE import citygml $INPUT_FILE

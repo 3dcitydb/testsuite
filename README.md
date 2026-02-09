@@ -16,6 +16,8 @@ docker compose up --build --exit-code-from test-all
 docker compose down -v
 ```
 
+A timestamped report is written to `output/report_YYYY-MM-DD_HHMMSS.md` after every full suite run.
+
 ## Architecture
 
 The test suite uses a Docker Compose multi-container setup:
@@ -56,6 +58,7 @@ All test scripts are in `scripts/` and use `set -e` for fail-fast behavior. Most
 | `test_duplicate_handling.sh` | `duplicate` | Double import behavior validation |
 | `test_error_handling.sh` | `error` | Negative tests: bad file, bad XML, wrong credentials, wrong host |
 | `test_info.sh` | `info` | Database info command validation |
+| `test_perf.sh` | `perf` | Performance test with large synthetic data (see below) |
 
 ### Test Helper Library (`test_helpers.sh`)
 
@@ -69,6 +72,8 @@ Shared functions sourced by all test scripts:
 - `get_feature_count()` -- Total feature count from DB
 - `get_feature_count_by_type()` -- Feature count filtered by objectclass name
 - `truncate_features()` -- Clear all features for test isolation
+- `resolve_citygml_input()` -- Resolve custom or default CityGML input file
+- `is_skipped()` -- Check if a test should be skipped via `SKIP_TESTS`
 
 ## Running Tests
 
@@ -121,6 +126,32 @@ docker compose --profile error up --build --exit-code-from test-error
 docker compose --profile info up --build --exit-code-from test-info
 ```
 
+### Skipping Tests
+
+When running the full suite, you can skip individual tests by setting the `SKIP_TESTS` environment variable with a comma-separated list of skip keys:
+
+```bash
+SKIP_TESTS=delete,roundtrip,error docker compose up --build --exit-code-from test-all
+```
+
+Available skip keys:
+
+| Key | Test |
+|-----|------|
+| `import` | CityGML Import |
+| `export` | CityGML Export |
+| `cityjson-import` | CityJSON Import |
+| `cityjson-export` | CityJSON Export |
+| `filtered-export` | Filtered Export |
+| `delete` | Delete / Terminate |
+| `index` | Index Management |
+| `roundtrip` | Roundtrip |
+| `duplicate` | Duplicate Handling |
+| `error` | Error Handling |
+| `info` | Info Command |
+
+Skipped tests appear as **SKIP** in the report summary.
+
 ### Cleanup
 
 Remove all containers, networks, and the database volume:
@@ -130,6 +161,112 @@ docker compose down -v
 ```
 
 The `-v` flag removes the named volume containing PostgreSQL data, ensuring a clean state for the next run.
+
+## Custom CityGML Dataset
+
+You can run the test suite against your own CityGML data instead of the built-in datasets.
+
+### Setup
+
+1. Place your `.gml` file somewhere under the `data/` directory (e.g., `data/custom/mydata.gml`).
+2. Set the `CITYGML_DATASET` environment variable to the **container path** (prefix with `/data/`):
+
+```bash
+CITYGML_DATASET=/data/custom/mydata.gml \
+  docker compose up --build --exit-code-from test-all
+```
+
+### Which tests use your data?
+
+| Uses custom dataset | Always uses built-in data |
+|---------------------|---------------------------|
+| CityGML Import | CityJSON Import / Export (needs `.city.json`) |
+| CityGML Export | Filtered Export (needs building + road) |
+| Delete / Terminate | Error Handling (needs invalid XML) |
+| Roundtrip | Index Management (DB-only, no data) |
+| Duplicate Handling | |
+| Info Command | |
+
+### Examples
+
+```bash
+# Run all tests with custom data
+CITYGML_DATASET=/data/custom/mydata.gml \
+  docker compose up --build --exit-code-from test-all
+
+# Run with custom data, skip some tests
+CITYGML_DATASET=/data/custom/mydata.gml \
+  SKIP_TESTS=delete,duplicate,error \
+  docker compose up --build --exit-code-from test-all
+
+# Run only the import test with custom data
+CITYGML_DATASET=/data/custom/mydata.gml \
+  docker compose --profile import up --build --exit-code-from test-import
+```
+
+> **Note:** The database is configured for SRID 25832 (UTM Zone 32N). Datasets using a different CRS may import successfully, but spatial filter tests (bounding box export) may produce unexpected results.
+
+## Performance Test
+
+The performance test generates a large synthetic CityGML dataset, imports and exports it, and reports detailed timing metrics plus database statistics. It runs as a separate profile and is **not** included in the default test suite.
+
+### How it works
+
+1. **Generates** N buildings (each with 4 WallSurfaces + 1 RoofSurface) on a spatial grid
+2. **Imports** the generated file into the database, measuring wall-clock time
+3. **Validates** feature counts by type (Building, WallSurface, RoofSurface)
+4. **Exports** all data back to CityGML, measuring wall-clock time
+5. **Collects** database statistics: table sizes, index sizes, total DB size, scan counts
+6. **Prints** a formatted summary and writes a report to `output/report_perf_*.md`
+
+### Running
+
+```bash
+# Default: 10,000 buildings (~150 MB generated file)
+docker compose --profile perf up --build --exit-code-from test-perf
+
+# Custom scale: 50,000 buildings (~750 MB)
+BUILDING_COUNT=50000 docker compose --profile perf up --build --exit-code-from test-perf
+
+# Small quick test: 1,000 buildings (~15 MB)
+BUILDING_COUNT=1000 docker compose --profile perf up --build --exit-code-from test-perf
+```
+
+### Approximate dataset sizes
+
+| Buildings | Generated file | Features in DB |
+|-----------|---------------|----------------|
+| 1,000 | ~15 MB | ~6,000 |
+| 10,000 | ~150 MB | ~60,000 |
+| 50,000 | ~750 MB | ~300,000 |
+| 100,000 | ~1.5 GB | ~600,000 |
+
+Each building produces 6 features (1 Building + 4 WallSurface + 1 RoofSurface).
+
+### Data generator
+
+The `scripts/generate_citygml.sh` script can also be used standalone to create synthetic CityGML data:
+
+```bash
+# Inside the container or any bash environment
+./scripts/generate_citygml.sh 5000 output/synthetic_5k.gml
+```
+
+Arguments: `BUILDING_COUNT` (default 10000), `OUTPUT_FILE` (default `/data/synthetic/large_dataset.gml`).
+
+## Test Reports
+
+Every full suite run (`test-all`) and every standalone performance test (`test-perf`) generates a timestamped Markdown report in the `output/` directory:
+
+- **Full suite:** `output/report_2026-02-09_143022.md`
+- **Performance test:** `output/report_perf_2026-02-09_150512.md`
+
+Reports include:
+- Date, database info, and custom dataset details (if any)
+- Per-test results (PASS / FAIL / SKIP) with assertion details
+- Duration per test
+- Summary table with totals
+- For performance tests: timing breakdown, feature counts, table sizes, index stats
 
 ## Test Data
 
@@ -183,6 +320,7 @@ testsuite/
   scripts/
     run_all_tests.sh       Master test runner
     test_helpers.sh        Shared assertion and DB query functions
+    generate_citygml.sh    Synthetic CityGML data generator
     test_import.sh         CityGML import test
     test_export.sh         CityGML export test
     test_import_cityjson.sh
@@ -194,7 +332,8 @@ testsuite/
     test_duplicate_handling.sh
     test_error_handling.sh
     test_info.sh
-  output/                  Generated export files (gitignored)
+    test_perf.sh           Performance / stress test
+  output/                  Generated export files and reports (gitignored)
 ```
 
 ## CI/CD Integration

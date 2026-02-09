@@ -57,12 +57,15 @@ report_finalize() {
     echo "| # | Test | Result | Duration |"
     echo "|---|------|--------|----------|"
 
-    local idx=0 passed=0 failed=0
+    local idx=0 passed=0 failed=0 skipped=0
     while IFS='|' read -r name result duration; do
       idx=$((idx + 1))
       if [ "$result" = "PASS" ]; then
         echo "| $idx | $name | PASS | ${duration}s |"
         passed=$((passed + 1))
+      elif [ "$result" = "SKIP" ]; then
+        echo "| $idx | $name | SKIP | — |"
+        skipped=$((skipped + 1))
       else
         echo "| $idx | $name | **FAIL** | ${duration}s |"
         failed=$((failed + 1))
@@ -70,7 +73,7 @@ report_finalize() {
     done < "$results_file"
 
     echo ""
-    echo "**Total: $passed passed, $failed failed**"
+    echo "**Total: $passed passed, $failed failed, $skipped skipped**"
 
     if [ -n "${SUITE_START:-}" ]; then
       local total=$(( $(date +%s) - SUITE_START ))
@@ -178,4 +181,46 @@ get_feature_count_by_type() {
 # Delete all features from the database (CASCADE handles foreign key dependencies).
 truncate_features() {
   db_query "TRUNCATE feature CASCADE;"
+}
+
+# ---------------------------------------------------------------------------
+# Custom dataset helpers
+# ---------------------------------------------------------------------------
+
+# Resolve the input CityGML file.  When CITYGML_DATASET is set, validate and
+# use it; otherwise fall back to the provided default path.
+# Usage: INPUT_FILE=$(resolve_citygml_input "/data/synthetic/minimal_building.gml")
+resolve_citygml_input() {
+  local default_file="$1"
+  local custom="${CITYGML_DATASET:-}"
+
+  if [ -z "$custom" ]; then
+    echo "$default_file"
+    return 0
+  fi
+
+  if [ ! -f "$custom" ]; then
+    echo "ERROR: Custom dataset not found: $custom" >&2
+    echo "  Place the file under ./data/ and use the container path /data/..." >&2
+    exit 1
+  fi
+
+  local ext="${custom##*.}"
+  ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+  if [ "$ext" != "gml" ] && [ "$ext" != "xml" ]; then
+    echo "ERROR: Custom dataset must be a CityGML file (.gml or .xml), got: $custom" >&2
+    exit 1
+  fi
+
+  echo "$custom"
+}
+
+# Check if a test should be skipped.  SKIP_TESTS is a comma-separated list
+# of skip keys (e.g. "delete,roundtrip,error").
+# Usage: if is_skipped "delete"; then ... fi
+is_skipped() {
+  local key="$1"
+  local list="${SKIP_TESTS:-}"
+  [ -z "$list" ] && return 1
+  echo ",$list," | grep -qi ",$key,"
 }
