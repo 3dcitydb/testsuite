@@ -116,5 +116,14 @@ services:
     entrypoint: /bin/bash
     command: /scripts/test_info.sh
 
+  # Service to run performance test with large synthetic data
+  test-perf:
+    <<: *tester-base
+    profiles: ["perf"]
+    environment:
+      - BUILDING_COUNT=${BUILDING_COUNT:-10000}
+    entrypoint: /bin/bash
+    command: /scripts/test_perf.sh
+
 volumes:
   citydb_data:
