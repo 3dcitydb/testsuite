@@ -53,5 +53,68 @@ services:
     entrypoint: /bin/bash
     command: /scripts/test_export.sh
 
+  # Service to run CityJSON import test
+  test-import-cityjson:
+    <<: *tester-base
+    profiles: ["import-cityjson"]
+    entrypoint: /bin/bash
+    command: /scripts/test_import_cityjson.sh
+
+  # Service to run CityJSON export test
+  test-export-cityjson:
+    <<: *tester-base
+    profiles: ["export-cityjson"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_cityjson.sh
+
+  # Service to run filtered export test
+  test-export-filtered:
+    <<: *tester-base
+    profiles: ["export-filtered"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_filtered.sh
+
+  # Service to run delete/terminate test
+  test-delete:
+    <<: *tester-base
+    profiles: ["delete"]
+    entrypoint: /bin/bash
+    command: /scripts/test_delete.sh
+
+  # Service to run index management test
+  test-index:
+    <<: *tester-base
+    profiles: ["index"]
+    entrypoint: /bin/bash
+    command: /scripts/test_index.sh
+
+  # Service to run roundtrip test
+  test-roundtrip:
+    <<: *tester-base
+    profiles: ["roundtrip"]
+    entrypoint: /bin/bash
+    command: /scripts/test_roundtrip.sh
+
+  # Service to run duplicate handling test
+  test-duplicate:
+    <<: *tester-base
+    profiles: ["duplicate"]
+    entrypoint: /bin/bash
+    command: /scripts/test_duplicate_handling.sh
+
+  # Service to run error handling test
+  test-error:
+    <<: *tester-base
+    profiles: ["error"]
+    entrypoint: /bin/bash
+    command: /scripts/test_error_handling.sh
+
+  # Service to run info command test
+  test-info:
+    <<: *tester-base
+    profiles: ["info"]
+    entrypoint: /bin/bash
+    command: /scripts/test_info.sh
+
 volumes:
   citydb_data:
