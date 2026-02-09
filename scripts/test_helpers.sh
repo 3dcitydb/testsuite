@@ -76,7 +76,7 @@ get_feature_count_by_type() {
   db_query "SELECT count(*) FROM feature f JOIN objectclass o ON f.objectclass_id = o.id WHERE o.classname = '$type';"
 }
 
-# Delete all features from the database.
+# Delete all features from the database (CASCADE handles foreign key dependencies).
 truncate_features() {
-  db_query "DELETE FROM feature;"
+  db_query "TRUNCATE feature CASCADE;"
 }
