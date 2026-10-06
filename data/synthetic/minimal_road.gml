@@ -42,6 +42,7 @@
               </core:lod2MultiSurface>
             </tran:TrafficArea>
           </core:boundary>
+          <tran:granularity>way</tran:granularity>
         </tran:TrafficSpace>
       </tran:trafficSpace>
     </tran:Road>

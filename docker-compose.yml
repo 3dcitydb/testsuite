@@ -1,9 +1,9 @@
-version: '3.8'
-
 x-tester-base: &tester-base
   build:
     context: .
     dockerfile: Dockerfile
+    args:
+      CITYDB_TOOL_VERSION: ${CITYDB_TOOL_VERSION:-1.4.0}
   volumes:
     - ./data:/data
     - ./output:/output
@@ -16,13 +16,9 @@ x-tester-base: &tester-base
     db:
       condition: service_healthy
 
-# ---------------------------------------------------------------------------
-# --- SERVICE DEFINITIONS ---
-# These are the actual services that Docker will run.
-# ---------------------------------------------------------------------------
 services:
   db:
-    image: 3dcitydb/3dcitydb-pg
+    image: 3dcitydb/3dcitydb-pg:${CITYDB_PG_VERSION:-17-3.5-5.1.4}
     environment:
       - POSTGRES_USER=citydb
       - POSTGRES_PASSWORD=test
@@ -30,99 +26,153 @@ services:
       - SRID=25832
     volumes:
       - citydb_data:/var/lib/postgresql/data
+    # Check via TCP: during initialization the entrypoint runs a temporary
+    # server that only listens on the Unix socket, so a socket check would
+    # report healthy before the 3DCityDB setup has finished.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U citydb -d citydb"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U citydb -d citydb"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 120s
 
-  # Default service to run all tests
+  # Full suite (default service); every single test has its own service and
+  # profile, see README.
   test-all:
     <<: *tester-base
     entrypoint: /bin/bash
     command: /scripts/run_all_tests.sh
 
-  # Service to run only the IMPORT test
   test-import:
     <<: *tester-base
     profiles: ["import"]
     entrypoint: /bin/bash
     command: /scripts/test_import.sh
 
-  # Service to run only the EXPORT test
   test-export:
     <<: *tester-base
     profiles: ["export"]
     entrypoint: /bin/bash
     command: /scripts/test_export.sh
 
-  # Service to run CityJSON import test
   test-import-cityjson:
     <<: *tester-base
     profiles: ["import-cityjson"]
     entrypoint: /bin/bash
     command: /scripts/test_import_cityjson.sh
 
-  # Service to run CityJSON export test
   test-export-cityjson:
     <<: *tester-base
     profiles: ["export-cityjson"]
     entrypoint: /bin/bash
     command: /scripts/test_export_cityjson.sh
 
-  # Service to run filtered export test
   test-export-filtered:
     <<: *tester-base
     profiles: ["export-filtered"]
     entrypoint: /bin/bash
     command: /scripts/test_export_filtered.sh
 
-  # Service to run delete/terminate test
+  test-cityjson-options:
+    <<: *tester-base
+    profiles: ["cityjson-options"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_cityjson_options.sh
+
+  test-cql2:
+    <<: *tester-base
+    profiles: ["cql2"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_cql2.sh
+
+  test-cql2-advanced:
+    <<: *tester-base
+    profiles: ["cql2-advanced"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_cql2_advanced.sh
+
+  test-cql2-spatial:
+    <<: *tester-base
+    profiles: ["cql2-spatial"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_cql2_spatial.sh
+
+  test-export-types:
+    <<: *tester-base
+    profiles: ["export-types"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_types.sh
+
+  test-pkg:
+    <<: *tester-base
+    profiles: ["pkg"]
+    entrypoint: /bin/bash
+    command: /scripts/test_citydb_pkg.sh
+
+  test-import-options:
+    <<: *tester-base
+    profiles: ["import-options"]
+    entrypoint: /bin/bash
+    command: /scripts/test_import_options.sh
+
+  test-export-options:
+    <<: *tester-base
+    profiles: ["export-options"]
+    entrypoint: /bin/bash
+    command: /scripts/test_export_options.sh
+
+  test-delete-options:
+    <<: *tester-base
+    profiles: ["delete-options"]
+    entrypoint: /bin/bash
+    command: /scripts/test_delete_options.sh
+
+  test-roundtrip-content:
+    <<: *tester-base
+    profiles: ["roundtrip-content"]
+    entrypoint: /bin/bash
+    command: /scripts/test_roundtrip_content.sh
+
   test-delete:
     <<: *tester-base
     profiles: ["delete"]
     entrypoint: /bin/bash
     command: /scripts/test_delete.sh
 
-  # Service to run index management test
   test-index:
     <<: *tester-base
     profiles: ["index"]
     entrypoint: /bin/bash
     command: /scripts/test_index.sh
 
-  # Service to run roundtrip test
   test-roundtrip:
     <<: *tester-base
     profiles: ["roundtrip"]
     entrypoint: /bin/bash
     command: /scripts/test_roundtrip.sh
 
-  # Service to run duplicate handling test
   test-duplicate:
     <<: *tester-base
     profiles: ["duplicate"]
     entrypoint: /bin/bash
     command: /scripts/test_duplicate_handling.sh
 
-  # Service to run error handling test
   test-error:
     <<: *tester-base
     profiles: ["error"]
     entrypoint: /bin/bash
     command: /scripts/test_error_handling.sh
 
-  # Service to run info command test
   test-info:
     <<: *tester-base
     profiles: ["info"]
     entrypoint: /bin/bash
     command: /scripts/test_info.sh
 
-  # Service to run performance test with large synthetic data
   test-perf:
     <<: *tester-base
     profiles: ["perf"]
+    # YAML merge keys do not merge lists: repeat the base environment.
     environment:
       - CITYGML_DATASET=${CITYGML_DATASET:-}
       - SKIP_TESTS=${SKIP_TESTS:-}
