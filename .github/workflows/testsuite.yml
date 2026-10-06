@@ -1,0 +1,81 @@
+name: Test suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # nightly run against the latest images (early warning for new releases)
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      citydb_tool_version:
+        description: "citydb-tool image version (empty = pinned default)"
+        required: false
+        default: ""
+      citydb_pg_version:
+        description: "3dcitydb-pg image version (empty = pinned default)"
+        required: false
+        default: ""
+      skip_tests:
+        description: "Comma-separated skip keys (see README)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testsuite-${{ github.ref }}
+  # only superseded pull request runs are cancelled
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-all:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SKIP_TESTS: ${{ inputs.skip_tests }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select image versions
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TOOL_VERSION: ${{ inputs.citydb_tool_version }}
+          INPUT_PG_VERSION: ${{ inputs.citydb_pg_version }}
+        run: |
+          # The nightly run tests the latest images as an early warning for
+          # new releases; all other runs use the pinned defaults unless a
+          # version is given for a manual run.
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            echo "CITYDB_TOOL_VERSION=latest" >> "$GITHUB_ENV"
+            echo "CITYDB_PG_VERSION=latest" >> "$GITHUB_ENV"
+          fi
+          if [ -n "$INPUT_TOOL_VERSION" ]; then
+            echo "CITYDB_TOOL_VERSION=$INPUT_TOOL_VERSION" >> "$GITHUB_ENV"
+          fi
+          if [ -n "$INPUT_PG_VERSION" ]; then
+            echo "CITYDB_PG_VERSION=$INPUT_PG_VERSION" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run test suite
+        run: docker compose up --build --exit-code-from test-all test-all
+
+      - name: Show report summary
+        if: always()
+        run: |
+          report=$(ls -t output/report_*.md 2>/dev/null | head -1)
+          [ -n "$report" ] && sed -n '/^## Summary/,$p' "$report" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload report and exports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: testsuite-output
+          path: output/
+          retention-days: 14
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

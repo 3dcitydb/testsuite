@@ -9,24 +9,17 @@ OUTPUT_FILE="/output/exported_building.city.json"
 echo "=== CityJSON Export Tests ==="
 echo "-------------------------------------------"
 
-# Ensure there is data to export by importing first
 truncate_features
-echo "Importing synthetic building data for export test..."
-citydb import cityjson \
-  --db-host=db --db-name=citydb --db-username=citydb --db-password=test \
-  /data/synthetic/minimal_building.city.json
-echo "Import complete."
+run_quiet citydb import cityjson "${DB_ARGS[@]}" /data/synthetic/minimal_building.city.json
+assert_equals 1 "$(get_feature_count_by_type 'Building')" "Pre-export: building imported"
 
-COUNT=$(get_feature_count)
-assert_gt 0 "$COUNT" "Pre-export: features exist in database"
+rm -f "$OUTPUT_FILE"
+run_quiet citydb --config "$CONFIG_FILE" export cityjson -o "$OUTPUT_FILE"
+echo "Export complete."
 
-# Export to CityJSON
-echo "Exporting to CityJSON..."
-citydb --config $CONFIG_FILE export cityjson -o $OUTPUT_FILE
-echo "Export command finished."
-
-# Verify output file exists and has content
 assert_file_exists "$OUTPUT_FILE" 100 "CityJSON export: output file exists with content"
+assert_export_count 1 "$OUTPUT_FILE" Building "CityJSON export: building exported"
+assert_schema_valid "$OUTPUT_FILE" "CityJSON export: schema-valid"
 
 echo ""
 echo "=== CityJSON Export Tests PASSED ==="

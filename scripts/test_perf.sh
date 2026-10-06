@@ -12,7 +12,7 @@ set -e
 
 source /scripts/test_helpers.sh
 
-# When run standalone (not via run_all_tests.sh), generate our own report.
+# Create a separate report unless REPORT_FILE is already set.
 if [ -z "$REPORT_FILE" ]; then
   TIMESTAMP=$(date '+%Y-%m-%d_%H%M%S')
   export REPORT_FILE="/output/report_perf_${TIMESTAMP}.md"
@@ -23,8 +23,11 @@ fi
 BUILDING_COUNT="${BUILDING_COUNT:-10000}"
 CONFIG_IMPORT="/config/config_citygml_import.json"
 CONFIG_EXPORT="/config/config_citygml_export.json"
-GENERATED_FILE="/data/synthetic/large_dataset.gml"
+GENERATED_FILE="/tmp/large_dataset.gml"
 EXPORT_FILE="/output/perf_export.gml"
+
+# Remove the generated dataset also when a step fails.
+trap 'rm -f "$GENERATED_FILE"' EXIT
 
 # ---------------------------------------------------------------------------
 # Helper: format seconds into human-readable duration
@@ -81,7 +84,7 @@ GEN_START=$(date +%s)
 GEN_END=$(date +%s)
 GEN_ELAPSED=$((GEN_END - GEN_START))
 
-FILE_SIZE=$(stat -c %s "$GENERATED_FILE" 2>/dev/null || stat -f %z "$GENERATED_FILE")
+FILE_SIZE=$(stat -c %s "$GENERATED_FILE")
 echo "  Generated $BUILDING_COUNT buildings in $(format_duration $GEN_ELAPSED)"
 echo "  File size: $(format_bytes $FILE_SIZE) ($FILE_SIZE bytes)"
 echo ""
@@ -115,17 +118,14 @@ report_line "- Duration: **$(format_duration $IMP_ELAPSED)**"
 # ---------------------------------------------------------------------------
 echo "--- Phase 3: Import Validation ---"
 TOTAL_FEATURES=$(get_feature_count)
-assert_gt 0 "$TOTAL_FEATURES" "Total features imported"
-
 BUILDING_COUNT_DB=$(get_feature_count_by_type "Building")
-echo "  Buildings in DB:     $BUILDING_COUNT_DB"
-
 WALL_COUNT=$(get_feature_count_by_type "WallSurface")
-echo "  WallSurfaces in DB:  $WALL_COUNT"
-
 ROOF_COUNT=$(get_feature_count_by_type "RoofSurface")
-echo "  RoofSurfaces in DB:  $ROOF_COUNT"
 
+# Each generated building has 4 wall surfaces and 1 roof surface.
+assert_equals "$BUILDING_COUNT" "$BUILDING_COUNT_DB" "All buildings imported"
+assert_equals $((4 * BUILDING_COUNT)) "$WALL_COUNT" "All wall surfaces imported"
+assert_equals "$BUILDING_COUNT" "$ROOF_COUNT" "All roof surfaces imported"
 echo "  Total features:      $TOTAL_FEATURES"
 echo ""
 
@@ -147,7 +147,8 @@ EXP_ELAPSED=$((EXP_END - EXP_START))
 echo "  Export completed in $(format_duration $EXP_ELAPSED)"
 
 assert_file_exists "$EXPORT_FILE" 3072 "Export file has meaningful content"
-EXPORT_SIZE=$(stat -c %s "$EXPORT_FILE" 2>/dev/null || stat -f %z "$EXPORT_FILE")
+assert_export_count "$BUILDING_COUNT" "$EXPORT_FILE" bldg:Building "All buildings exported"
+EXPORT_SIZE=$(stat -c %s "$EXPORT_FILE")
 echo "  Export file size: $(format_bytes $EXPORT_SIZE) ($EXPORT_SIZE bytes)"
 echo ""
 
@@ -180,23 +181,15 @@ echo "  -----------------------------------------------------------"
 report_line "| Table | Data | Indexes | Total |"
 report_line "|-------|------|---------|-------|"
 
-db_query "
-  SELECT
-    relname || '|' ||
-    pg_relation_size(c.oid) || '|' ||
-    pg_indexes_size(c.oid) || '|' ||
-    pg_total_relation_size(c.oid)
+TABLE_SIZES=$(db_rows "
+  SELECT relname, pg_relation_size(c.oid), pg_indexes_size(c.oid), pg_total_relation_size(c.oid)
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public'
+  WHERE n.nspname = 'citydb'
     AND c.relkind = 'r'
   ORDER BY pg_total_relation_size(c.oid) DESC
-  LIMIT 10;
-" | while IFS='|' read -r tbl data_sz idx_sz total_sz; do
-  tbl=$(echo "$tbl" | xargs)
-  data_sz=$(echo "$data_sz" | xargs)
-  idx_sz=$(echo "$idx_sz" | xargs)
-  total_sz=$(echo "$total_sz" | xargs)
+  LIMIT 10;")
+while IFS='|' read -r tbl data_sz idx_sz total_sz; do
   if [ -n "$tbl" ]; then
     printf "  %-30s %12s %12s %12s\n" \
       "$tbl" \
@@ -205,7 +198,7 @@ db_query "
       "$(format_bytes "$total_sz")"
     report_line "| $tbl | $(format_bytes "$data_sz") | $(format_bytes "$idx_sz") | $(format_bytes "$total_sz") |"
   fi
-done
+done <<< "$TABLE_SIZES"
 
 echo ""
 report_line ""
@@ -219,26 +212,18 @@ echo "  -----------------------------------------------------------"
 report_line "| Table | Seq Scans | Idx Scans | Live Tuples |"
 report_line "|-------|-----------|-----------|-------------|"
 
-db_query "
-  SELECT
-    relname || '|' ||
-    COALESCE(seq_scan, 0) || '|' ||
-    COALESCE(idx_scan, 0) || '|' ||
-    COALESCE(n_live_tup, 0)
+TABLE_ACTIVITY=$(db_rows "
+  SELECT relname, COALESCE(seq_scan, 0), COALESCE(idx_scan, 0), COALESCE(n_live_tup, 0)
   FROM pg_stat_user_tables
-  WHERE schemaname = 'public'
+  WHERE schemaname = 'citydb'
   ORDER BY n_live_tup DESC
-  LIMIT 10;
-" | while IFS='|' read -r tbl seq idx tup; do
-  tbl=$(echo "$tbl" | xargs)
-  seq=$(echo "$seq" | xargs)
-  idx=$(echo "$idx" | xargs)
-  tup=$(echo "$tup" | xargs)
+  LIMIT 10;")
+while IFS='|' read -r tbl seq idx tup; do
   if [ -n "$tbl" ]; then
     printf "  %-30s %10s %10s %12s\n" "$tbl" "$seq" "$idx" "$tup"
     report_line "| $tbl | $seq | $idx | $tup |"
   fi
-done
+done <<< "$TABLE_ACTIVITY"
 
 echo ""
 report_line ""

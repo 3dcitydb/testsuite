@@ -1,0 +1,62 @@
+{
+    "databaseOptions": {
+        "connections": {
+            "defaultConnectionId": {
+                "description": "Default database connection",
+                "user": "citydb",
+                "password": "test",
+                "host": "db",
+                "port": 5432,
+                "database": "citydb",
+                "srid": 25832
+            }
+        },
+        "defaultConnectionId": "defaultConnectionId"
+    },
+    "exportOptions": {
+        "query": {
+            "featureTypes": [
+                { "name": "bldg:Building" }
+            ],
+            "filter": {
+                "op": "and",
+                "args": [
+                    {
+                        "op": "s_dWithin",
+                        "args": [
+                            { "property": "core:envelope" },
+                            { "type": "Point", "coordinates": [458800, 5438360] },
+                            150,
+                            "m"
+                        ]
+                    },
+                    {
+                        "op": "in",
+                        "args": [
+                            { "property": "district" },
+                            ["Mitte"]
+                        ]
+                    },
+                    {
+                        "op": ">=",
+                        "args": [
+                            { "property": "core:creationDate" },
+                            { "timestamp": "2026-01-01T00:00:00Z" }
+                        ]
+                    }
+                ]
+            },
+            "filterSrs": {
+                "srid": 25832
+            }
+        }
+    },
+    "readOptions": {},
+    "writeOptions": {
+        "formatOptions": {
+            "CityGML": {
+                "version": "3.0"
+            }
+        }
+    }
+}

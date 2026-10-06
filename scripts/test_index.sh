@@ -6,42 +6,24 @@ source /scripts/test_helpers.sh
 echo "=== Index Management Tests ==="
 echo "-------------------------------------------"
 
-# Test 1: Check index status
-echo "--- Test: Index status ---"
-echo "Checking current index status..."
-citydb index status --db-host=db --db-name=citydb --db-username=citydb --db-password=test
-echo "PASS: Index status command succeeded"
-report_line "- PASS: Index status command succeeded"
+# Make sure the indexes exist again for the following tests, even if a
+# step fails.
+trap 'citydb index create "${DB_ARGS[@]}" > /dev/null 2>&1 || true' EXIT
 
-# Test 2: Drop indexes
-echo ""
-echo "--- Test: Drop indexes ---"
-echo "Dropping indexes..."
-citydb index drop --db-host=db --db-name=citydb --db-username=citydb --db-password=test
-echo "PASS: Index drop command succeeded"
-report_line "- PASS: Index drop command succeeded"
+spatial_index_exists() {
+  db_query "SELECT count(*) FROM pg_indexes WHERE schemaname = 'citydb' AND indexname = 'feature_envelope_spx';"
+}
 
-# Test 3: Verify indexes are dropped (status check)
-echo ""
-echo "--- Test: Verify indexes dropped ---"
-citydb index status --db-host=db --db-name=citydb --db-username=citydb --db-password=test
-echo "PASS: Index status after drop succeeded"
-report_line "- PASS: Index status after drop succeeded"
+run_quiet citydb index status "${DB_ARGS[@]}"
+assert_equals 1 "$(spatial_index_exists)" "Index status: spatial index exists"
 
-# Test 4: Recreate indexes
-echo ""
-echo "--- Test: Create indexes ---"
-echo "Creating indexes..."
-citydb index create --db-host=db --db-name=citydb --db-username=citydb --db-password=test
-echo "PASS: Index create command succeeded"
-report_line "- PASS: Index create command succeeded"
+run_quiet citydb index drop "${DB_ARGS[@]}"
+assert_equals 0 "$(spatial_index_exists)" "Index drop: spatial index removed"
+run_quiet citydb index status "${DB_ARGS[@]}"
 
-# Test 5: Verify indexes are created (status check)
-echo ""
-echo "--- Test: Verify indexes created ---"
-citydb index status --db-host=db --db-name=citydb --db-username=citydb --db-password=test
-echo "PASS: Index status after create succeeded"
-report_line "- PASS: Index status after create succeeded"
+run_quiet citydb index create "${DB_ARGS[@]}"
+assert_equals 1 "$(spatial_index_exists)" "Index create: spatial index recreated"
+run_quiet citydb index status "${DB_ARGS[@]}"
 
 echo ""
 echo "=== Index Management Tests PASSED ==="

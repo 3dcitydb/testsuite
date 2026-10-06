@@ -1,0 +1,3 @@
+# The Dockerfile copies nothing from the build context; data, scripts and
+# configs are mounted at runtime.
+*
