@@ -17,11 +17,12 @@
 #   SP24-SP30  combinations with attributes, NOT, OR, sorting, limits
 #   SP31-SP35  filter CRS (EPSG:4326, EPSG:3857, CRS84)
 #   SP36-SP38  tiling and CityJSON output with spatial filters
-#   SP39-SP42  pinned edge behavior and negative cases
+#   SP39-SP42  z range of 3D BBOXes, edge behavior and negative cases
 #   SP43       delete with spatial filters (runs last, modifies the data)
 #
-# Negated spatial predicates on geometry properties (SP28, SP29) are probed
-# at runtime and SKIPPED on an unexpected empty result (to be clarified).
+# Known issues of citydb-tool <= 1.4.0 that are fixed upstream are detected
+# at runtime and SKIPPED: negated spatial predicates on geometry properties
+# (SP28, SP29) and the z range of 3D BBOXes (SP39).
 
 set -e
 
@@ -76,7 +77,7 @@ assert_equals "0 0 20 20" "$(db_query "SELECT st_xmin(envelope) - 460000, st_ymi
 NEGGEOM_OK=1
 cli_export -t $B -f "S_DISJOINT(core:lod2MultiSurface, $NEAR_BBOX)" \
   && [ "$(export_ids "$OUT" $B)" = "" ] && NEGGEOM_OK=0
-NEGGEOM_SKIP="NOT S_INTERSECTS / S_DISJOINT on geometry properties return no features; to be clarified"
+NEGGEOM_SKIP="NOT S_INTERSECTS / S_DISJOINT on geometry properties return no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
 echo "Probes: negated-geometry-predicates=$NEGGEOM_OK"
 
 # ---------------------------------------------------------------------------
@@ -273,15 +274,22 @@ assert_equals "SP_COURTYARD SP_TOWER SP_TWIN" "$(grep -oE '"SP_[A-Z]+"' "$OUT_JS
 assert_schema_valid "$OUT_JSON" "SP38: CityJSON export is schema-valid"
 
 # ---------------------------------------------------------------------------
-# SP39-SP42: pinned edge behavior and negative cases
+# SP39-SP42: z range of 3D BBOXes, edge behavior and negative cases
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Edge and negative cases (SP39-SP42) ---"
+echo "--- 3D BBOX, edge and negative cases (SP39-SP42) ---"
 
-# SP39: the z range of a 3D BBOX is ignored (2D evaluation); z 150..200 is
-# above the tower (z 0..100) but still matches (pinned deliberately).
+# SP39: the z range of a 3D BBOX on the envelope is respected; z 50..200
+# cuts the tower (z 0..100), z 150..200 lies above it.  citydb-tool <= 1.4.0
+# evaluates the BBOX in 2D (skipped on a match above the tower).
+cli_export -f "S_INTERSECTS(core:envelope, BBOX(460190, 5439190, 50, 460220, 5439220, 200))"
+assert_export_ids "$(sp TOWER)" "$OUT" "$TOP" "SP39: 3D BBOX cutting the z range of the tower"
 cli_export -f "S_INTERSECTS(core:envelope, BBOX(460190, 5439190, 150, 460220, 5439220, 200))"
-assert_export_ids "$(sp TOWER)" "$OUT" "$TOP" "SP39: z range of a 3D BBOX is ignored"
+if [ "$(export_ids "$OUT" "$TOP")" = "$(sp TOWER | xargs)" ]; then
+  skip_case "SP39 (above)" "the z range of a 3D BBOX is ignored; known issue of citydb-tool <= 1.4.0, fixed upstream"
+else
+  assert_export_ids "" "$OUT" "$TOP" "SP39: 3D BBOX above the tower matches nothing"
+fi
 
 assert_fails_with "Failed to convert distance value." \
   "SP40: angular distance unit on a metric database CRS" \

@@ -11,13 +11,10 @@
 #   CJ04  -v 1.0 (single document), --no-transform-coordinates
 #   CJ05  --vertex-precision
 #   CJ06  --pretty-print (only without JSON Lines)
-#   CJ07  --crs 4326 with a suitable vertex precision
+#   CJ07  --crs 4326 with a suitable vertex precision; the default precision
+#         collapses small geometries
 #   CJ08  --threads yields the same features
 #   CJ09  re-import of a single-document export
-#
-# To be clarified (reported as SKIP): with an angular CRS such as EPSG:4326
-# the default vertex precision of 3 decimal places (~100 m) is kept, so the
-# vertices of small buildings collapse.
 
 set -e
 
@@ -118,13 +115,11 @@ DISTINCT_VERTICES='len(set(tuple(v) for v in head["vertices"]))'
 cj_export --crs 4326 --vertex-precision 8 --no-json-lines -f "core:objectId = 'BLDG_CQL2_01'"
 assert_equals "http://www.opengis.net/def/crs/EPSG/0/4326" "$(cj_eval 'head["metadata"]["referenceSystem"]')" "CJ07: reference system EPSG:4326"
 assert_equals 8 "$(cj_eval "$DISTINCT_VERTICES")" "CJ07: 8 distinct vertices with --vertex-precision 8"
+# The default vertex precision of 3 decimal places is kept for an angular
+# CRS (~100 m in EPSG:4326), so the vertices of a 10 m footprint collapse.
+# Intended: the precision has to be set explicitly.
 cj_export --crs 4326 --no-json-lines -f "core:objectId = 'BLDG_CQL2_01'"
-COLLAPSED=$(cj_eval "$DISTINCT_VERTICES")
-if [ "$COLLAPSED" != "8" ]; then
-  skip_case "CJ07 (default precision)" "only $COLLAPSED of 8 distinct vertices with --crs 4326 and the default vertex precision of 3 decimal places (~100 m); to be clarified"
-else
-  assert_equals 8 "$COLLAPSED" "CJ07: 8 distinct vertices with --crs 4326 and the default precision"
-fi
+assert_equals 4 "$(cj_eval "$DISTINCT_VERTICES")" "CJ07: default precision with --crs 4326 collapses the vertices (4 of 8 distinct)"
 
 # ---------------------------------------------------------------------------
 # CJ08-CJ09: threads and re-import

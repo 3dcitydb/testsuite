@@ -10,8 +10,8 @@
 #   DL03  terminate with sub-features, --termination-date, --lineage,
 #         --updating-person, --reason-for-update
 #   DL04  -m delete removes sub-features, geometries and appearances
-#   DL05-DL07  --limit, --start-index (the selection order is not defined,
-#              so only counts are checked), --commit
+#   DL05-DL07  --limit, --start-index (without a sort order the selection
+#              is not defined, so only counts are checked), --commit
 #   DL08-DL09  -M invalid, -T (validity at a point in time)
 #   DL10  -m delete removes the addresses of deleted buildings
 #   DL11  --index-mode drop_create

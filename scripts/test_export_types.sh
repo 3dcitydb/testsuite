@@ -7,7 +7,10 @@
 #   Y04      --quiet --log-file (no console output, summary in the log file)
 #   Y05      top-level and nested type combined: no duplicate gml:ids
 #
-# Y05 is SKIPPED if gml:ids are exported twice (to be clarified).
+# Y05 is SKIPPED if gml:ids are exported twice.  This is still open
+# upstream: the duplicates are currently how a feature is exported and
+# re-imported with its complete history, so deduplication by gml:id needs
+# another mechanism for history exports first.
 
 set -e
 
@@ -109,7 +112,7 @@ if [ "$DUPLICATES" = "0" ]; then
   assert_export_count 33 "$OUT" "con:WallSurface" "Y05: each wall surface exported once"
   assert_schema_valid "$OUT" "Y05: combined type export is schema-valid"
 else
-  skip_case "Y05" "$DUPLICATES gml:ids exported twice when combining a top-level type with one of its nested types; to be clarified"
+  skip_case "Y05" "$DUPLICATES gml:ids exported twice when combining a top-level type with one of its nested types; still open upstream"
 fi
 
 echo ""

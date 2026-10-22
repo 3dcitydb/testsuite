@@ -79,7 +79,8 @@ assert_equals 0 "$(db_query 'SELECT citydb_pkg.is_db_coord_ref_sys_3d();')" \
 assert_equals 1 "$(db_query 'SELECT citydb_pkg.check_srid(25832);')" \
   "S02: check_srid(25832) reports valid"
 
-# Note: check_srid returns 0 for unknown SRIDs instead of raising an error.
+# check_srid returns 0 for unknown SRIDs instead of raising an error, as
+# defined by the 3DCityDB schema.
 assert_equals 0 "$(db_query 'SELECT citydb_pkg.check_srid(999999);')" \
   "S02: check_srid(999999) reports invalid"
 

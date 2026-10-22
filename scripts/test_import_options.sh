@@ -216,7 +216,7 @@ assert_equals 0 "$(db_query "SELECT count(*) FROM appearance WHERE implicit_geom
 # are checked separately (skipped if they are imported).
 IMPLICIT_APP=$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NOT NULL;")
 if [ "$IMPLICIT_APP" != "0" ]; then
-  skip_case "IM14 (implicit geometries)" "$IMPLICIT_APP appearances of implicit geometries imported despite --no-appearances; to be clarified"
+  skip_case "IM14 (implicit geometries)" "$IMPLICIT_APP appearances of implicit geometries imported despite --no-appearances; known issue of citydb-tool 1.4.0, fixed upstream"
 else
   assert_equals "0 0" "$(db_query "SELECT (SELECT count(*) FROM surface_data), (SELECT count(*) FROM tex_image);" | tr -d '|' | xargs)" \
     "IM14: --no-appearances skips surface data and textures"
@@ -232,7 +232,7 @@ assert_equals 0 "$(db_query "SELECT count(*) FROM appearance WHERE implicit_geom
 # Same check for the theme filter on the appearances of implicit geometries.
 IMPLICIT_APP=$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NOT NULL;")
 if [ "$IMPLICIT_APP" != "0" ]; then
-  skip_case "IM14 (theme, implicit geometries)" "$IMPLICIT_APP appearances of implicit geometries imported despite an unknown --appearance-theme; to be clarified"
+  skip_case "IM14 (theme, implicit geometries)" "$IMPLICIT_APP appearances of implicit geometries imported despite an unknown --appearance-theme; known issue of citydb-tool 1.4.0, fixed upstream"
 fi
 
 # ---------------------------------------------------------------------------

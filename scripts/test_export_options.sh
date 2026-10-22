@@ -6,8 +6,8 @@
 #
 # Covered:
 #   EX01  --citygml-version 1.0 / 2.0 / 3.0 (+ invalid version)
-#   EX02  CityGML 2.0 drops generic code attributes (pinned)
-#   EX03  --crs, --crs-name (axis order of EPSG:4326 pinned)
+#   EX02  CityGML 2.0 drops generic code attributes (format limit)
+#   EX03  --crs, --crs-name, axis order of EPSG:4326 (+ swap-xy)
 #   EX04  --no-pretty-print
 #   EX05  --output-encoding
 #   EX06  --transform swap-xy
@@ -63,15 +63,17 @@ assert_equals 1 "$(grep -c 'xmlns:bldg="http://www.opengis.net/citygml/building/
 assert_schema_valid "$OUT" "EX01: CityGML 2.0 export is schema-valid"
 assert_export_count 8 "$OUT" bldg:Building "EX01: CityGML 2.0 contains all buildings"
 assert_equals 8 "$(grep -c '<bldg:measuredHeight' "$OUT")" "EX01: con:height exported as bldg:measuredHeight"
-assert_equals 0 "$(grep -c 'usageCode' "$OUT" || true)" "EX02: generic code attribute dropped in CityGML 2.0 (pinned)"
+# EX02: CityGML 2.0 cannot keep the value of a generic code attribute
+# together with its code space (only possible since CityGML 3.0).
+assert_equals 0 "$(grep -c 'usageCode' "$OUT" || true)" "EX02: generic code attribute dropped in CityGML 2.0 (format limit)"
 
 opt_export -v 1.0
 assert_equals 1 "$(grep -c 'xmlns:bldg="http://www.opengis.net/citygml/building/1.0"' "$OUT")" "EX01: CityGML 1.0 namespace"
-# If the CityGML 1.0 export contains constructs that only exist since
-# CityGML 2.0, they are removed from a copy and the rest of the file is
-# still validated.
+# citydb-tool <= 1.4.0 writes constructs that only exist since CityGML 2.0
+# into CityGML 1.0 exports (fixed upstream in citygml4j).  They are removed
+# from a copy and the rest of the file is still validated.
 if grep -qE '<gen:measureAttribute|<gen:genericAttributeSet|<bldg:[a-zA-Z]+ codeSpace=' "$OUT"; then
-  skip_case "EX01 (1.0 schema)" "CityGML 1.0 export contains CityGML 2.0 constructs, validated without them; to be clarified"
+  skip_case "EX01 (1.0 schema)" "CityGML 1.0 export contains CityGML 2.0 constructs, validated without them; known issue of citydb-tool <= 1.4.0, fixed upstream"
   sed -e '/<gen:measureAttribute/,/<\/gen:measureAttribute>/d' \
       -e '/<gen:genericAttributeSet/,/<\/gen:genericAttributeSet>/d' \
       -e 's/ codeSpace="[^"]*"//g' "$OUT" > "$OUT_DIR/case_1_0_stripped.gml"
@@ -93,8 +95,13 @@ echo "--- CRS (EX03) ---"
 opt_export --crs 4326 -f "core:objectId = 'BLDG_CQL2_01'"
 assert_equals 1 "$(grep -c 'srsName="http://www.opengis.net/def/crs/EPSG/0/4326"' "$OUT")" "EX03: srsName of EPSG:4326"
 # Coordinates are written as longitude/latitude although the EPSG
-# definition of 4326 is latitude/longitude (pinned deliberately).
+# definition of 4326 is latitude/longitude: citydb-tool leaves the
+# transformation to PostGIS (intended).  --transform swap-xy gives the EPSG
+# axis order.
 assert_equals "8.4355 49.0965" "$(first_poslist | awk '{printf "%.4f %.4f", $1, $2}')" "EX03: coordinates transformed (lon/lat order)"
+
+opt_export --crs 4326 --transform swap-xy -f "core:objectId = 'BLDG_CQL2_01'"
+assert_equals "49.0965 8.4355" "$(first_poslist | awk '{printf "%.4f %.4f", $1, $2}')" "EX03: --transform swap-xy gives the EPSG axis order (lat/lon)"
 
 opt_export --crs 4326 --crs-name "EPSG:4326" -f "core:objectId = 'BLDG_CQL2_01'"
 assert_equals 1 "$(grep -c 'srsName="EPSG:4326"' "$OUT")" "EX03: --crs-name overrides the srsName"

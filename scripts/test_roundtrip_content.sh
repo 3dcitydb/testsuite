@@ -13,16 +13,17 @@
 #   RT01  CQL2 dataset, CityGML 3.0: lossless
 #   RT02  Railway scene, CityGML 3.0: lossless
 #   RT03  Railway scene, CityGML 2.0: lossless (source is CityGML 2.0)
-#   RT04  CQL2 dataset, CityGML 2.0: pinned losses (code attributes,
-#         height references)
-#   RT05  CQL2 dataset, CityJSON: pinned losses (code spaces, height
-#         references), everything else lossless
-#   RT06  Railway scene, CityJSON: pinned losses (relativeToTerrain/Water on
-#         sub-features, TIN relief id), classes and geometries preserved
+#   RT04  CQL2 dataset, CityGML 2.0: format-related losses (code
+#         attributes, height references)
+#   RT05  CQL2 dataset, CityJSON: format-related losses (code spaces,
+#         height references), everything else lossless
+#   RT06  Railway scene, CityJSON: relativeToTerrain/Water kept, pinned loss
+#         of the TIN relief id, classes and geometries preserved
 #   RT07  a second CityGML 3.0 export has the same content as the first one
 #
-# The property comparison of RT02 is SKIPPED if gen:function comes back as
-# an additional generic attribute (to be clarified).
+# Known issues of citydb-tool <= 1.4.0 that are fixed upstream are SKIPPED:
+# gen:function exported again as a generic attribute (RT02 props) and
+# relativeToTerrain/Water lost on sub-features in CityJSON (RT06).
 
 set -e
 
@@ -131,7 +132,7 @@ for part in classes objids geoms addr app tex; do
   assert_same $part "RT02: Railway scene via CityGML 3.0, $part identical"
 done
 if grep -q '<gen:name>function</gen:name>' "$RT_DIR/railway.gml"; then
-  skip_case "RT02 (props)" "gen:function of GenericOccupiedSpace is exported with an additional generic attribute; to be clarified"
+  skip_case "RT02 (props)" "gen:function of GenericOccupiedSpace is exported with an additional generic attribute; known issue of citydb-tool <= 1.4.0, fixed upstream"
 else
   assert_same props "RT02: Railway scene via CityGML 3.0, props identical"
 fi
@@ -148,7 +149,7 @@ for part in classes props objids geoms addr app tex; do
 done
 
 # RT04: CityGML 2.0 has no code attributes and no height references
-# (con:Height becomes bldg:measuredHeight); both losses are pinned.
+# (con:Height becomes bldg:measuredHeight); both losses are format limits.
 KEEP="NOT (p.name = 'usageCode' OR p.name = 'highReference')"
 load_original $DATASET
 ORIG_props_kept=$(fp_props "$KEEP")
@@ -157,9 +158,9 @@ for part in classes objids geoms addr app tex; do
   assert_same $part "RT04: CQL2 dataset via CityGML 2.0, $part identical"
 done
 assert_equals "$ORIG_props_kept" "$(fp_props "$KEEP")" "RT04: all other attributes identical"
-assert_equals 0 "$(db_query "SELECT count(*) FROM property WHERE name = 'usageCode';")" "RT04: generic code attribute usageCode is lost (pinned)"
+assert_equals 0 "$(db_query "SELECT count(*) FROM property WHERE name = 'usageCode';")" "RT04: generic code attribute usageCode is lost (format limit)"
 assert_equals "topOfConstruction 8" "$(db_query "SELECT val_string, count(*) FROM property WHERE name = 'highReference' GROUP BY 1;" | tr -d '|' | xargs)" \
-  "RT04: highReference becomes topOfConstruction (pinned)"
+  "RT04: highReference becomes topOfConstruction (format limit)"
 
 # ---------------------------------------------------------------------------
 # RT05-RT06: CityJSON
@@ -175,29 +176,37 @@ for part in classes objids geoms addr app tex; do
   assert_same $part "RT05: CQL2 dataset via CityJSON, $part identical"
 done
 assert_equals "$ORIG_props_gen" "$(fp_props "$GEN")" "RT05: all generic attributes identical (incl. sets, code, measure)"
+# CityJSON defines no mapping for code spaces (or complex attributes in
+# general); the values themselves are kept.
 assert_equals 0 "$(db_query "SELECT count(val_codespace) FROM property WHERE name IN ('function', 'roofType');")" \
-  "RT05: code spaces of function and roofType are lost (pinned)"
+  "RT05: code spaces of function and roofType are lost (format limit)"
 assert_equals "topOfConstruction 8" "$(db_query "SELECT val_string, count(*) FROM property WHERE name = 'highReference' GROUP BY 1;" | tr -d '|' | xargs)" \
-  "RT05: highReference becomes topOfConstruction (pinned)"
+  "RT05: highReference becomes topOfConstruction (format limit)"
 
 roundtrip $RAILWAY cityjson railway.city.json
 assert_same classes "RT06: Railway scene via CityJSON, classes identical"
 assert_equals "$(echo "$ORIG_geoms" | cut -d' ' -f1-2)" "$(fp_geoms | cut -d' ' -f1-2)" \
   "RT06: geometry and point counts identical"
 # relativeToTerrain / relativeToWater: 197 values (47 on top-level
-# features, 150 on sub-features); 81 values on sub-features are lost.
+# features, 150 on sub-features).  citydb-tool <= 1.4.0 does not write them
+# for semantic objects, so 81 values on sub-features are lost (skipped).
 RELATIVE_SQL="SELECT count(*) FROM property p JOIN feature f ON f.id = p.feature_id JOIN objectclass o ON o.id = f.objectclass_id WHERE p.name IN ('relativeToTerrain', 'relativeToWater')"
 assert_equals 47 "$(db_query "$RELATIVE_SQL AND o.is_toplevel = 1;")" \
   "RT06: relativeToTerrain / relativeToWater kept on top-level features"
-assert_equals 116 "$(db_query "$RELATIVE_SQL;")" \
-  "RT06: 81 of 197 relativeToTerrain / relativeToWater values on sub-features are lost (pinned)"
+RELATIVE_ALL=$(db_query "$RELATIVE_SQL;")
+if [ "$RELATIVE_ALL" = "116" ]; then
+  skip_case "RT06 (sub-features)" "81 of 197 relativeToTerrain / relativeToWater values on sub-features are lost; known issue of citydb-tool <= 1.4.0, fixed upstream"
+else
+  assert_equals 197 "$RELATIVE_ALL" "RT06: all 197 relativeToTerrain / relativeToWater values kept"
+fi
 assert_equals 0 "$(db_query "SELECT count(*) FROM feature WHERE objectid = 'GMLID_TIN436865_187531_1154';")" \
   "RT06: the TIN relief gets a new object id (pinned)"
 
 # ---------------------------------------------------------------------------
-# RT07: exporting the re-imported data again yields the same content.  The
-# order of features and of attributes within a feature is not stable
-# between exports, so the sorted lines of both files are compared.
+# RT07: exporting the re-imported data again yields the same content.
+# Without an explicit sort order, the order of features and of attributes
+# within a feature is not stable between exports (intended), so the sorted
+# lines of both files are compared.
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Stable export (RT07) ---"

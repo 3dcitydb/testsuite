@@ -16,10 +16,10 @@
 #   E01      unknown attribute without namespace prefix (pinned fallback)
 #   D01-D04  sorting, pagination, delete with CQL2 filter, validity filters
 #
-# Cases with an unexpected result in the tested citydb-tool version are
-# detected at runtime via probes and SKIPPED (to be clarified): IS [NOT]
-# NULL on untyped generic attributes (T08, T09, T10, C09) and SQL()
-# expressions (C07, C08).  T10b/C09b cover the same logical constructs
+# Known issues of citydb-tool <= 1.4.0 that are fixed upstream are detected
+# at runtime via probes and SKIPPED: IS [NOT] NULL on untyped generic
+# attributes (T08, T09, T10, C09), SQL() expressions (C07, C08) and the z
+# range of 3D BBOXes (G05b).  T10b/C09b cover the same logical constructs
 # without IS NULL.
 
 set -e
@@ -80,7 +80,7 @@ if cli_export "$OUT" -t bldg:Building -f "owner IS NOT NULL" >/dev/null \
     && [ "$(count_gml_features "$OUT" 'bldg:Building')" = "0" ]; then
   ISNULL_OK=0
 fi
-ISNULL_SKIP="IS [NOT] NULL on untyped generic attributes returns no features; to be clarified"
+ISNULL_SKIP="IS [NOT] NULL on untyped generic attributes returns no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
 
 # Probe 2: SQL() expressions (a trivially-true subquery matches all 10 features).
 SQL_OK=1
@@ -88,7 +88,7 @@ if cli_export "$OUT" -f "SQL('select id from feature')" >/dev/null \
     && [ "$(export_ids "$OUT" 'bldg:Building,tran:Road')" = "" ]; then
   SQL_OK=0
 fi
-SQL_SKIP="SQL() expressions return no features; to be clarified"
+SQL_SKIP="SQL() expressions return no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
 
 # Probe 3: unaccent extension for ACCENTI (install on demand if available).
 db_query "CREATE EXTENSION IF NOT EXISTS unaccent;" >/dev/null 2>&1 || true
@@ -254,10 +254,20 @@ assert_export_count 1 "$OUT" "tran:Road" "G03: S_CROSSES road geometry with N-S 
 cli_export "$OUT" --filter-crs 4326 -f "S_INTERSECTS(core:envelope, BBOX(8.43534, 49.09643, 8.43645, 49.09708))"
 assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "G04: west bbox in WGS84 via --filter-crs 4326"
 
-# G05: 3D bbox (6 coordinates); the z range is ignored and the bbox is
-# evaluated in 2D (pinned, cf. SP39), so the result equals T12.
+# G05: 3D bbox (6 coordinates); the z range covers all features of the
+# west cluster, so the result equals T12.
 cli_export "$OUT" -f "S_INTERSECTS(core:envelope, BBOX(458780, 5438330, -10, 458860, 5438400, 100))"
-assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "G05: 3D BBOX (== 2D result)"
+assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "G05: 3D BBOX covering the z range (== T12)"
+
+# G05b: z 10..100 only intersects the envelopes of B03 (10.5 m) and B04
+# (14 m).  citydb-tool <= 1.4.0 ignores the z range (skipped on the 2D
+# result of G05).
+cli_export "$OUT" -f "S_INTERSECTS(core:envelope, BBOX(458780, 5438330, 10, 458860, 5438400, 100))"
+if [ "$(export_ids "$OUT" 'bldg:Building,tran:Road' | wc -w)" = "5" ]; then
+  skip_case "G05b" "the z range of a 3D BBOX is ignored; known issue of citydb-tool <= 1.4.0, fixed upstream"
+else
+  assert_export_ids "BLDG_CQL2_03 BLDG_CQL2_04" "$OUT" "bldg:Building,tran:Road" "G05b: 3D BBOX respects the z range"
+fi
 
 # G06: filter on the real geometry property instead of the envelope
 cli_export "$OUT" -t bldg:Building -f "S_INTERSECTS(core:lod2MultiSurface, BBOX(458780, 5438330, 458860, 5438400))"

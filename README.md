@@ -98,7 +98,7 @@ All test scripts are in `scripts/`, use `set -e` for fail-fast behavior and sour
 - `export_ids()`, `ordered_ids()`, `assert_export_ids()`: list or assert the exported gml:ids
 - `export_to()`: run a CityGML export into a fresh output file
 - `assert_schema_valid()`: validate an export against the CityGML or CityJSON schema
-- `skip_case()`: report a skipped case (e.g. an unexpected result that is still to be clarified) and continue
+- `skip_case()`: report a skipped case (e.g. a known issue of the tested citydb-tool version) and continue
 - `run_quiet()`: run a command with its output in a log file; show the log tail on failure
 - `make_query_config()`: write a config copy with a given export query (CQL2 JSON filters)
 - `get_feature_count()`, `get_feature_count_by_type()`: feature counts from the database
