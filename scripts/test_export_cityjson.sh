@@ -3,7 +3,7 @@ set -e
 
 source /scripts/test_helpers.sh
 
-CONFIG_FILE="/config/config_cityjson_export.json"
+CONFIG_FILE="$CONFIG_DIR/config_cityjson_export.json"
 OUTPUT_FILE="/output/exported_building.city.json"
 
 echo "=== CityJSON Export Tests ==="
@@ -13,7 +13,7 @@ echo "-------------------------------------------"
 truncate_features
 echo "Importing synthetic building data for export test..."
 citydb import cityjson \
-  --db-host=db --db-name=citydb --db-username=citydb --db-password=test \
+  --config-file "$CONFIG_DB" \
   /data/synthetic/minimal_building.city.json
 echo "Import complete."
 

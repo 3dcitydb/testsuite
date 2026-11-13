@@ -3,7 +3,7 @@ set -e
 
 source /scripts/test_helpers.sh
 
-CONFIG_IMPORT="/config/config_citygml_import.json"
+CONFIG_IMPORT="$CONFIG_DIR/config_citygml_import.json"
 INPUT_FILE=$(resolve_citygml_input "/data/synthetic/minimal_building.gml")
 
 echo "=== Delete and Terminate Tests ==="
@@ -21,7 +21,7 @@ COUNT_BEFORE=$(get_feature_count)
 assert_gt 0 "$COUNT_BEFORE" "Delete test: features exist before delete"
 
 echo "Deleting all features via citydb-tool..."
-citydb delete --db-host=db --db-name=citydb --db-username=citydb --db-password=test \
+citydb delete --config-file "$CONFIG_DB" \
   --delete-mode=delete
 echo "Delete command finished."
 
@@ -41,7 +41,7 @@ COUNT_BEFORE=$(get_feature_count)
 assert_gt 0 "$COUNT_BEFORE" "Terminate test: features exist before terminate"
 
 echo "Terminating all features via citydb-tool..."
-citydb delete --db-host=db --db-name=citydb --db-username=citydb --db-password=test \
+citydb delete --config-file "$CONFIG_DB" \
   --delete-mode=terminate
 echo "Terminate command finished."
 

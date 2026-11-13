@@ -3,7 +3,7 @@ set -e
 
 source /scripts/test_helpers.sh
 
-CONFIG_IMPORT="/config/config_citygml_import.json"
+CONFIG_IMPORT="$CONFIG_DIR/config_citygml_import.json"
 INPUT_FILE=$(resolve_citygml_input "/data/synthetic/minimal_building.gml")
 
 echo "=== Info Command Tests ==="
@@ -21,7 +21,7 @@ assert_gt 0 "$COUNT" "Info test: features exist for info query"
 # Run the info command
 echo ""
 echo "--- Test: Database info ---"
-citydb info --db-host=db --db-name=citydb --db-username=citydb --db-password=test
+citydb info --config-file "$CONFIG_DB"
 echo "PASS: Info command succeeded"
 report_line "- PASS: Info command succeeded"
 

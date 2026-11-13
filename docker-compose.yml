@@ -10,6 +10,7 @@ x-tester-base: &tester-base
     - ./config:/config
     - ./scripts:/scripts
   environment:
+    - DB_TYPE=${DB_TYPE:-postgres}
     - CITYGML_DATASET=${CITYGML_DATASET:-}
     - SKIP_TESTS=${SKIP_TESTS:-}
   depends_on:
@@ -29,7 +30,7 @@ services:
       - POSTGRES_DB=citydb
       - SRID=25832
     volumes:
-      - citydb_data:/var/lib/postgresql/data
+      - citydb_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U citydb -d citydb"]
       interval: 5s
@@ -124,6 +125,7 @@ services:
     <<: *tester-base
     profiles: ["perf"]
     environment:
+      - DB_TYPE=${DB_TYPE:-postgres}
       - CITYGML_DATASET=${CITYGML_DATASET:-}
       - SKIP_TESTS=${SKIP_TESTS:-}
       - BUILDING_COUNT=${BUILDING_COUNT:-10000}

@@ -21,8 +21,8 @@ if [ -z "$REPORT_FILE" ]; then
 fi
 
 BUILDING_COUNT="${BUILDING_COUNT:-10000}"
-CONFIG_IMPORT="/config/config_citygml_import.json"
-CONFIG_EXPORT="/config/config_citygml_export.json"
+CONFIG_IMPORT="$CONFIG_DIR/config_citygml_import.json"
+CONFIG_EXPORT="$CONFIG_DIR/config_citygml_export.json"
 GENERATED_FILE="/data/synthetic/large_dataset.gml"
 EXPORT_FILE="/output/perf_export.gml"
 

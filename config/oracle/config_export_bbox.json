@@ -3,11 +3,12 @@
         "connections": {
             "defaultConnectionId": {
                 "description": "Default database connection",
+                "databaseName": "Oracle",
                 "user": "citydb",
-                "password": "test",
+                "password": "citydb",
                 "host": "db",
-                "port": 5432,
-                "database": "citydb",
+                "port": 1521,
+                "database": "FREEPDB1",
                 "srid": 25832
             }
         },
@@ -18,9 +19,7 @@
             "filterSrs": {
                 "srid": 25832
             },
-            "featureTypes": [
-                "Building"
-            ]
+            "filter": "s_intersects(envelope, bbox(458900, 5438340, 458950, 5438360))"
         }
     },
     "readOptions": {},

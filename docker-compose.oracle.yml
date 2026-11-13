@@ -1,0 +1,50 @@
+# Override file for running the test suite against Oracle instead of PostgreSQL:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.oracle.yml up --build --exit-code-from test-all
+#
+# Environment variables:
+#   ORACLE_DB_IMAGE     3DCityDB Oracle image, built from Dockerfile.oracle of the
+#                       3dcitydb repository (default: 3dcitydb-oracle)
+#   ORACLE_ADAPTER_DIR  output folder of `gradlew assembleAdapter` in the
+#                       citydb-oracle-adapter project
+#   CITYDB_TOOL_IMAGE   citydb-tool base image (default: 3dcitydb/citydb-tool:edge)
+
+x-oracle-tester: &oracle-tester
+  build:
+    dockerfile: Dockerfile.oracle
+    additional_contexts:
+      adapter: ${ORACLE_ADAPTER_DIR:-../citydb-oracle-adapter/build/database-oracle-adapter}
+    args:
+      CITYDB_TOOL_IMAGE: ${CITYDB_TOOL_IMAGE:-3dcitydb/citydb-tool:edge}
+  environment:
+    DB_TYPE: oracle
+
+services:
+  db:
+    image: ${ORACLE_DB_IMAGE:-3dcitydb-oracle}
+    environment: !override
+      - ORACLE_PWD=citydb
+      - DB_USER=citydb
+      - SRID=25832
+    volumes: !reset []
+    # Healthy once the 3DCityDB init script has created the last schema object.
+    healthcheck: !override
+      test: ["CMD-SHELL", "echo \"select 'ready' from user_objects where object_name = 'CITYDB_SCHEMA' and object_type = 'PACKAGE BODY' and status = 'VALID';\" | sqlplus -S -L citydb/citydb@//localhost:1521/FREEPDB1 | grep -q ready"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 120s
+
+  test-all: *oracle-tester
+  test-import: *oracle-tester
+  test-export: *oracle-tester
+  test-import-cityjson: *oracle-tester
+  test-export-cityjson: *oracle-tester
+  test-export-filtered: *oracle-tester
+  test-delete: *oracle-tester
+  test-index: *oracle-tester
+  test-roundtrip: *oracle-tester
+  test-duplicate: *oracle-tester
+  test-error: *oracle-tester
+  test-info: *oracle-tester
+  test-perf: *oracle-tester

@@ -18,11 +18,7 @@
             "filterSrs": {
                 "srid": 25832
             },
-            "bbox": {
-                "lowerCorner": "458860.0 5438340.0",
-                "upperCorner": "458900.0 5438380.0",
-                "srid": 25832
-            }
+            "filter": "s_intersects(envelope, bbox(458900, 5438340, 458950, 5438360))"
         }
     },
     "readOptions": {},

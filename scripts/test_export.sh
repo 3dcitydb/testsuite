@@ -3,7 +3,7 @@ set -e
 
 source /scripts/test_helpers.sh
 
-CONFIG_FILE="/config/config_citygml_export.json"
+CONFIG_FILE="$CONFIG_DIR/config_citygml_export.json"
 OUTPUT_FILE="/output/exported_railway.gml"
 
 echo "Running EXPORT test..."

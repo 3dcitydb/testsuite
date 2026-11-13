@@ -1,6 +1,6 @@
 # 3DCityDB 5.0 and citydb-tool Test Suite
 
-Automated test suite for the [3D City Database](https://www.3dcitydb.org/) 5.0 and the associated [citydb-tool](https://github.com/3dcitydb/citydb-tool) CLI. Tests validate CityGML/CityJSON import, export, delete, index, and round-trip operations against a PostgreSQL/PostGIS database using Docker containers.
+Automated test suite for the [3D City Database](https://www.3dcitydb.org/) 5.0 and the associated [citydb-tool](https://github.com/3dcitydb/citydb-tool) CLI. Tests validate CityGML/CityJSON import, export, delete, index, and round-trip operations against a PostgreSQL/PostGIS database using Docker containers. The same tests can also be run against an Oracle database (see [Running against Oracle](#running-against-oracle)).
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ All test scripts are in `scripts/` and use `set -e` for fail-fast behavior. Most
 | `test_export.sh` | `export` | CityGML export with file size validation |
 | `test_import_cityjson.sh` | `import-cityjson` | CityJSON import with feature count validation |
 | `test_export_cityjson.sh` | `export-cityjson` | CityJSON export with file existence check |
-| `test_export_filtered.sh` | `export-filtered` | Filtered export by feature type and bounding box |
+| `test_export_filtered.sh` | `export-filtered` | Filtered export by feature type and bounding box, with content validation |
 | `test_delete.sh` | `delete` | Physical delete and soft delete (terminate) operations |
 | `test_index.sh` | `index` | Index lifecycle: status, drop, create |
 | `test_roundtrip.sh` | `roundtrip` | Import -> export -> reimport, compare feature counts |
@@ -71,6 +71,7 @@ Shared functions sourced by all test scripts:
 - `assert_fails()` -- Verify a command exits non-zero (negative testing)
 - `get_feature_count()` -- Total feature count from DB
 - `get_feature_count_by_type()` -- Feature count filtered by objectclass name
+- `count_elements()` -- Count elements with a given qualified name in an exported CityGML file
 - `truncate_features()` -- Clear all features for test isolation
 - `resolve_citygml_input()` -- Resolve custom or default CityGML input file
 - `is_skipped()` -- Check if a test should be skipped via `SKIP_TESTS`
@@ -161,6 +162,45 @@ docker compose down -v
 ```
 
 The `-v` flag removes the named volume containing PostgreSQL data, ensuring a clean state for the next run.
+
+## Running against Oracle
+
+The suite is database-neutral: the `DB_TYPE` environment variable (`postgres` by default, or `oracle`) selects the SQL client used for validation queries (`psql` or `sqlplus`) and the config folder (`config/postgres` or `config/oracle`). The override file `docker-compose.oracle.yml` sets `DB_TYPE=oracle`, replaces the `db` service with a 3DCityDB Oracle container and builds the test image from `Dockerfile.oracle` (citydb-tool + [citydb-oracle-adapter](https://github.com/3dcitydb/citydb-oracle-adapter) + Oracle Instant Client).
+
+### Prerequisites
+
+1. A 3DCityDB Oracle image, built from `Dockerfile.oracle` of the [3dcitydb](https://github.com/3dcitydb/3dcitydb) repository:
+
+   ```bash
+   docker build -f Dockerfile.oracle -t 3dcitydb-oracle .
+   ```
+
+2. The Oracle adapter folder, built in the citydb-oracle-adapter project:
+
+   ```bash
+   ./gradlew assembleAdapter   # -> build/database-oracle-adapter/
+   ```
+
+### Running
+
+```bash
+# Full suite
+docker compose -f docker-compose.yml -f docker-compose.oracle.yml up --build --exit-code-from test-all
+
+# Individual test
+docker compose -f docker-compose.yml -f docker-compose.oracle.yml --profile delete up --build --exit-code-from test-delete
+
+# Clean up
+docker compose -f docker-compose.yml -f docker-compose.oracle.yml down -v
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ORACLE_DB_IMAGE` | `3dcitydb-oracle` | 3DCityDB Oracle image used for the `db` service |
+| `ORACLE_ADAPTER_DIR` | `../citydb-oracle-adapter/build/database-oracle-adapter` | Output folder of `gradlew assembleAdapter` |
+| `CITYDB_TOOL_IMAGE` | `3dcitydb/citydb-tool:edge` | citydb-tool base image the adapter is added to |
+
+The Oracle container needs a few minutes to start; the tests wait until its health check reports that the 3DCityDB schema is ready. The database statistics of the performance test are PostgreSQL-specific and not yet available for Oracle.
 
 ## Custom CityGML Dataset
 
@@ -288,15 +328,16 @@ Minimal test files created specifically for targeted test scenarios:
 
 ## Configuration Files
 
-JSON configuration files for citydb-tool operations are in `config/`:
+JSON configuration files for citydb-tool operations are in `config/postgres/` and `config/oracle/`. Both folders contain the same set of files and differ only in the connection settings:
 
 | File | Purpose |
 |------|---------|
+| `config_db.json` | DB connection settings only (used by delete, index, info, ...) |
 | `config_citygml_import.json` | CityGML import with DB connection settings |
 | `config_citygml_export.json` | CityGML export settings |
 | `config_cityjson_export.json` | CityJSON 2.0 export settings |
 | `config_export_buildings.json` | Export with Building feature type filter |
-| `config_export_bbox.json` | Export with bounding box filter |
+| `config_export_bbox.json` | Export with bounding box filter (CQL2) |
 | `config_bad_credentials.json` | Wrong password for error testing |
 | `config_bad_host.json` | Nonexistent host for error testing |
 
@@ -304,16 +345,21 @@ JSON configuration files for citydb-tool operations are in `config/`:
 
 ```
 testsuite/
-  docker-compose.yml       Docker Compose service definitions
-  Dockerfile               Custom test image (citydb-tool + psql)
-  config/                  JSON configs for citydb-tool operations
-    config_citygml_import.json
-    config_citygml_export.json
-    config_cityjson_export.json
-    config_export_buildings.json
-    config_export_bbox.json
-    config_bad_credentials.json
-    config_bad_host.json
+  docker-compose.yml         Docker Compose service definitions
+  docker-compose.oracle.yml  Override file for running against Oracle
+  Dockerfile                 Custom test image (citydb-tool + psql)
+  Dockerfile.oracle          Custom test image (citydb-tool + Oracle adapter + sqlplus)
+  config/                    JSON configs for citydb-tool operations
+    postgres/                Configs for PostgreSQL
+    oracle/                  Configs for Oracle
+      config_db.json
+      config_citygml_import.json
+      config_citygml_export.json
+      config_cityjson_export.json
+      config_export_buildings.json
+      config_export_bbox.json
+      config_bad_credentials.json
+      config_bad_host.json
   data/
     Railway_Scene/         CityGML 3.0 LoD3 dataset with textures
     synthetic/             Minimal test files for targeted scenarios

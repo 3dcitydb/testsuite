@@ -1,10 +1,35 @@
 #!/bin/bash
 # Common test helper functions sourced by all test scripts.
 
-export PGPASSWORD=test
+# DB_TYPE selects the database system under test: postgres (default) or oracle.
+DB_TYPE="${DB_TYPE:-postgres}"
 DB_HOST="${DB_HOST:-db}"
 DB_USER="${DB_USER:-citydb}"
-DB_NAME="${DB_NAME:-citydb}"
+
+case "$DB_TYPE" in
+  postgres)
+    DB_PORT="${DB_PORT:-5432}"
+    DB_NAME="${DB_NAME:-citydb}"
+    DB_PASSWORD="${DB_PASSWORD:-test}"
+    DB_LABEL="PostgreSQL/PostGIS (3dcitydb/3dcitydb-pg)"
+    export PGPASSWORD="$DB_PASSWORD"
+    ;;
+  oracle)
+    DB_PORT="${DB_PORT:-1521}"
+    DB_NAME="${DB_NAME:-FREEPDB1}"
+    DB_PASSWORD="${DB_PASSWORD:-citydb}"
+    DB_LABEL="Oracle Database"
+    ;;
+  *)
+    echo "ERROR: Unsupported DB_TYPE '$DB_TYPE' (expected postgres or oracle)" >&2
+    exit 1
+    ;;
+esac
+
+# citydb-tool config files are kept per database system. CONFIG_DB only holds
+# the connection and is used by commands that need no further options.
+CONFIG_DIR="${CONFIG_DIR:-/config/$DB_TYPE}"
+CONFIG_DB="$CONFIG_DIR/config_db.json"
 
 # ---------------------------------------------------------------------------
 # Report functions
@@ -20,7 +45,7 @@ report_init() {
 # 3DCityDB Test Suite Report
 
 **Date:** $(date '+%Y-%m-%d %H:%M:%S')
-**Database:** PostgreSQL/PostGIS (3dcitydb/3dcitydb-pg)
+**Database:** $DB_LABEL
 **SRID:** 25832 (UTM Zone 32N)
 
 ---
@@ -94,7 +119,27 @@ report_finalize() {
 # Execute a SQL query and return the trimmed result.
 db_query() {
   local query="$1"
-  psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c "$query" | xargs
+  if [ "$DB_TYPE" = "oracle" ]; then
+    local out
+    out=$(oracle_run "${query%;};") || return 1
+    echo "$out" | xargs
+  else
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "$query" | xargs
+  fi
+}
+
+# Run a SQL or PL/SQL script via sqlplus and print the bare result rows.
+oracle_run() {
+  local out
+  out=$(sqlplus -S -L "$DB_USER/$DB_PASSWORD@//$DB_HOST:$DB_PORT/$DB_NAME" << EOF
+set heading off feedback off pagesize 0 linesize 32767 trimspool on numwidth 20 verify off
+whenever sqlerror exit failure
+whenever oserror exit failure
+$1
+exit
+EOF
+  ) || { echo "$out" >&2; return 1; }
+  echo "$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -178,9 +223,21 @@ get_feature_count_by_type() {
   db_query "SELECT count(*) FROM feature f JOIN objectclass o ON f.objectclass_id = o.id WHERE o.classname = '$type';"
 }
 
+# Count the elements with the given qualified name (e.g. bldg:Building) in an exported CityGML file.
+count_elements() {
+  local fp="$1"
+  local name="$2"
+  grep -o "<$name[ >]" "$fp" | wc -l | xargs
+}
+
 # Delete all features from the database (CASCADE handles foreign key dependencies).
 truncate_features() {
-  db_query "TRUNCATE feature CASCADE;"
+  if [ "$DB_TYPE" = "oracle" ]; then
+    # Oracle has no TRUNCATE ... CASCADE across plain foreign keys.
+    oracle_run "exec citydb_delete.cleanup_schema"
+  else
+    db_query "TRUNCATE feature CASCADE;"
+  fi
 }
 
 # ---------------------------------------------------------------------------

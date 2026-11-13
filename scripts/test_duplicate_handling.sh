@@ -3,7 +3,7 @@ set -e
 
 source /scripts/test_helpers.sh
 
-CONFIG_IMPORT="/config/config_citygml_import.json"
+CONFIG_IMPORT="$CONFIG_DIR/config_citygml_import.json"
 INPUT_FILE=$(resolve_citygml_input "/data/synthetic/minimal_building.gml")
 
 echo "=== Duplicate Handling Tests ==="

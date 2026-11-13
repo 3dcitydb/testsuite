@@ -1,0 +1,28 @@
+# Dockerfile.oracle
+# Test image for running the suite against Oracle: citydb-tool with the
+# Oracle database adapter in its extensions folder plus sqlplus for validation.
+
+ARG CITYDB_TOOL_IMAGE=3dcitydb/citydb-tool:edge
+FROM ${CITYDB_TOOL_IMAGE}
+
+USER root
+
+# Oracle Instant Client (Basic Light + SQL*Plus)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libaio1t64 unzip curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -s /usr/lib/x86_64-linux-gnu/libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1 && \
+    cd /opt && \
+    for pkg in basiclite sqlplus; do \
+      curl -fsSLO https://download.oracle.com/otn_software/linux/instantclient/instantclient-${pkg}-linuxx64.zip && \
+      unzip -oq instantclient-${pkg}-linuxx64.zip && \
+      rm instantclient-${pkg}-linuxx64.zip; \
+    done && \
+    mv instantclient_* instantclient
+
+ENV LD_LIBRARY_PATH=/opt/instantclient
+ENV PATH=/opt/instantclient:$PATH
+
+# The "adapter" build context is the output folder of `gradlew assembleAdapter`
+# in the citydb-oracle-adapter project (adapter jar plus Oracle JDBC/Spatial jars).
+COPY --from=adapter . /opt/citydb-tool/extensions/database-oracle-adapter/
