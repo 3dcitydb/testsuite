@@ -7,7 +7,7 @@
 set -e
 
 BUILDING_COUNT="${1:-10000}"
-OUTPUT_FILE="${2:-/data/synthetic/large_dataset.gml}"
+OUTPUT_FILE="${2:-/tmp/large_dataset.gml}"
 
 # Grid layout parameters
 COLS=100
@@ -166,6 +166,6 @@ echo "Generating $BUILDING_COUNT buildings to $OUTPUT_FILE..." >&2
 } > "$OUTPUT_FILE"
 
 # Report results
-FILE_SIZE=$(stat -c %s "$OUTPUT_FILE" 2>/dev/null || stat -f %z "$OUTPUT_FILE")
+FILE_SIZE=$(stat -c %s "$OUTPUT_FILE")
 FILE_SIZE_MB=$(( FILE_SIZE / 1048576 ))
 echo "Generation complete: $BUILDING_COUNT buildings, ${FILE_SIZE_MB} MB ($FILE_SIZE bytes)" >&2

@@ -1,12 +1,12 @@
 #!/bin/bash
-# Master test runner — executes all tests and generates a timestamped
+# Master test runner - executes all tests and generates a timestamped
 # markdown report in /output/.
 #
 # Environment variables:
-#   CITYGML_DATASET  — path to a custom CityGML file (inside the container,
+#   CITYGML_DATASET  - path to a custom CityGML file (inside the container,
 #                      e.g. /data/custom/mydata.gml).  When set, applicable
 #                      tests use this file instead of their defaults.
-#   SKIP_TESTS       — comma-separated list of tests to skip, e.g.
+#   SKIP_TESTS       - comma-separated list of tests to skip, e.g.
 #                      "delete,roundtrip,error".  See skip keys below.
 
 source /scripts/test_helpers.sh
@@ -22,18 +22,13 @@ export SUITE_START=$(date +%s)
 report_init
 
 # ---------------------------------------------------------------------------
-# Custom dataset — validate early and log in report
+# Custom dataset - validate early and log in report
 # ---------------------------------------------------------------------------
 if [ -n "${CITYGML_DATASET:-}" ]; then
   echo "Custom dataset: $CITYGML_DATASET"
+  resolve_citygml_input "" > /dev/null || exit 1
 
-  if [ ! -f "$CITYGML_DATASET" ]; then
-    echo "ERROR: Custom dataset not found: $CITYGML_DATASET"
-    echo "  Place the file under ./data/ and use the container path /data/..."
-    exit 1
-  fi
-
-  DS_SIZE=$(stat -c %s "$CITYGML_DATASET" 2>/dev/null || stat -f %z "$CITYGML_DATASET")
+  DS_SIZE=$(stat -c %s "$CITYGML_DATASET")
   report_line "**Custom Dataset:** \`$CITYGML_DATASET\`"
   report_line "**Dataset Size:** $DS_SIZE bytes"
   report_line ""
@@ -109,15 +104,25 @@ echo "============================"
 
 maybe_run_test "CityGML Import"          /scripts/test_import.sh              import
 maybe_run_test "CityGML Export"          /scripts/test_export.sh              export
-maybe_run_test "CityJSON Import"         /scripts/test_import_cityjson.sh     cityjson-import
-maybe_run_test "CityJSON Export"         /scripts/test_export_cityjson.sh     cityjson-export
-maybe_run_test "Filtered Export"         /scripts/test_export_filtered.sh     filtered-export
+maybe_run_test "Import Options"          /scripts/test_import_options.sh      import-options
+maybe_run_test "CityJSON Import"         /scripts/test_import_cityjson.sh     import-cityjson
+maybe_run_test "CityJSON Export"         /scripts/test_export_cityjson.sh     export-cityjson
+maybe_run_test "CityJSON Export Options" /scripts/test_export_cityjson_options.sh cityjson-options
+maybe_run_test "Filtered Export"         /scripts/test_export_filtered.sh     export-filtered
+maybe_run_test "CQL2 Filtered Export"    /scripts/test_export_cql2.sh         cql2
+maybe_run_test "CQL2 Advanced Queries"   /scripts/test_export_cql2_advanced.sh cql2-advanced
+maybe_run_test "CQL2 Spatial Filters"    /scripts/test_export_cql2_spatial.sh cql2-spatial
+maybe_run_test "Feature Type Export"     /scripts/test_export_types.sh        export-types
+maybe_run_test "Export Options"          /scripts/test_export_options.sh      export-options
 maybe_run_test "Delete / Terminate"      /scripts/test_delete.sh              delete
+maybe_run_test "Delete Options"          /scripts/test_delete_options.sh      delete-options
 maybe_run_test "Index Management"        /scripts/test_index.sh               index
-maybe_run_test "Roundtrip"               /scripts/test_roundtrip.sh           roundtrip
+maybe_run_test "Round Trip"              /scripts/test_roundtrip.sh           roundtrip
+maybe_run_test "Content Round Trip"      /scripts/test_roundtrip_content.sh   roundtrip-content
 maybe_run_test "Duplicate Handling"      /scripts/test_duplicate_handling.sh   duplicate
 maybe_run_test "Error Handling"          /scripts/test_error_handling.sh       error
 maybe_run_test "Info Command"            /scripts/test_info.sh                info
+maybe_run_test "CityDB Pkg Functions"    /scripts/test_citydb_pkg.sh          pkg
 
 # ---------------------------------------------------------------------------
 # Finalize report

@@ -19,7 +19,7 @@
                 "srid": 25832
             },
             "featureTypes": [
-                "Building"
+                { "name": "bldg:Building" }
             ]
         }
     },

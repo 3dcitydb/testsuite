@@ -6,17 +6,12 @@ source /scripts/test_helpers.sh
 echo "=== CityJSON Import Tests ==="
 echo "-------------------------------------------"
 
-# Clear any existing data
 truncate_features
 
-echo "Importing CityJSON file..."
-citydb import cityjson \
-  --db-host=db --db-name=citydb --db-username=citydb --db-password=test \
-  /data/synthetic/minimal_building.city.json
-echo "Import command finished."
+run_quiet citydb import cityjson "${DB_ARGS[@]}" /data/synthetic/minimal_building.city.json
+echo "Import complete."
 
-COUNT=$(get_feature_count)
-assert_gt 0 "$COUNT" "CityJSON import: features exist"
+assert_equals 1 "$(get_feature_count_by_type 'Building')" "CityJSON import: building imported"
 
 echo ""
 echo "=== CityJSON Import Tests PASSED ==="
