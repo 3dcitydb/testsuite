@@ -1,0 +1,31 @@
+{
+    "databaseOptions": {
+        "connections": {
+            "defaultConnectionId": {
+                "description": "Default database connection",
+                "user": "citydb",
+                "password": "test",
+                "host": "db",
+                "port": 5432,
+                "database": "citydb",
+                "srid": 25832
+            }
+        },
+        "defaultConnectionId": "defaultConnectionId"
+    },
+    "exportOptions": {
+        "query": {
+            "filterSrs": {
+                "srid": 25832
+            }
+        }
+    },
+    "readOptions": {},
+    "writeOptions": {
+        "formatOptions": {
+            "CityGML": {
+                "version": "3.0"
+            }
+        }
+    }
+}

@@ -1,234 +1,350 @@
 # 3DCityDB 5.0 and citydb-tool Test Suite
 
-This README outlines the testing strategy for the 3DCityDB 5.0 database and the associated citydb-tool. As we embark on
-creating a robust testing framework, this document serves as a foundational plan for developing automated tests,
-particularly focusing on a Docker-based environment.
+Automated test suite for the [3D City Database](https://www.3dcitydb.org/) 5.0 and the associated [citydb-tool](https://github.com/3dcitydb/citydb-tool) CLI. Tests validate CityGML/CityJSON import, export, delete, index, and round-trip operations against a PostgreSQL/PostGIS database using Docker containers.
 
-## 1. Introduction
+## Prerequisites
 
-The 3DCityDB is a free 3D geodatabase schema and a set of software tools for storing, representing, and managing virtual
-3D city models. The citydb-tool is a command-line application designed for importing and exporting 3D city models from
-and to the 3DCityDB.
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (v2+)
 
-To ensure the quality, reliability, and stability of 3DCityDB 5.0 and the citydb-tool, a comprehensive test suite is
-essential. This document proposes an initial strategy for building such a suite, leveraging containerization for
-reproducible and isolated testing environments, as supported by the official 3DCityDB documentation.
+## Quick Start
 
-## 2. Testing Goals
+```bash
+# Run the full test suite
+docker compose up --build --exit-code-from test-all
 
-Our primary goals for the test suite are to:
+# Clean up after tests
+docker compose down -v
+```
 
-- Verify Core Functionality: Ensure that fundamental operations of 3DCityDB (schema creation, data storage) and
-  citydb-tool (import, export, database operations) work as expected.
+A timestamped report is written to `output/report_YYYY-MM-DD_HHMMSS.md` after every full suite run.
 
-- Ensure Data Integrity: Confirm that 3D city model data is correctly imported, stored, and exported without loss or
-  corruption, maintaining consistency with the 3DCityDB relational schema.
+## Architecture
 
-- Automate Testing: Establish an automated process for running tests, facilitating continuous integration and rapid
-  feedback on changes.
+The test suite uses a Docker Compose multi-container setup:
 
-- Provide Reproducible Environments: Use containerization to guarantee consistent test environments across different
-  development machines and CI/CD pipelines, aligning with the Docker-based setup described in the 3DCityDB
-  documentation.
+| Container | Image | Purpose |
+|-----------|-------|---------|
+| **db** | `3dcitydb/3dcitydb-pg` | PostgreSQL/PostGIS with 3DCityDB schema (SRID 25832) |
+| **test-*** | Custom (based on `3dcitydb/citydb-tool:latest`) | Runs citydb-tool commands + psql for DB validation |
 
-## 3. Testing Strategy: Docker-Based Approach
+The custom test image adds `postgresql-client` (psql) to the official citydb-tool image for database validation queries. A health check on the DB container gates test execution until PostgreSQL is ready.
 
-We will implement our test suite using Docker to create isolated and reproducible testing environments. This approach
-allows us to define the exact dependencies (database version, citydb-tool version, etc.) and ensures that tests run
-consistently regardless of the host system configuration.
+### Database Connection
 
-### 3.1. Architecture Overview
+| Parameter | Value |
+|-----------|-------|
+| Host | `db` (Docker network) |
+| User | `citydb` |
+| Password | `test` |
+| Database | `citydb` |
+| Port | 5432 |
+| SRID | 25832 (UTM Zone 32N) |
 
-While a multi-container setup offers strong isolation, a single Docker container can also be used, especially for
-simpler initial test setups.
+## Test Scripts
 
-#### Option A: Single Container Approach
+All test scripts are in `scripts/` and use `set -e` for fail-fast behavior. Most scripts source `test_helpers.sh` for common assertion and database query functions.
 
-In this approach, a single Docker image will contain all necessary components:
+| Script | Profile | Description |
+|--------|---------|-------------|
+| `run_all_tests.sh` | *(default)* | Master runner that executes all tests sequentially |
+| `test_import.sh` | `import` | CityGML import with feature count validation |
+| `test_export.sh` | `export` | CityGML export with file size validation |
+| `test_import_cityjson.sh` | `import-cityjson` | CityJSON import with feature count validation |
+| `test_export_cityjson.sh` | `export-cityjson` | CityJSON export with file existence check |
+| `test_export_filtered.sh` | `export-filtered` | Filtered export by feature type and bounding box |
+| `test_delete.sh` | `delete` | Physical delete and soft delete (terminate) operations |
+| `test_index.sh` | `index` | Index lifecycle: status, drop, create |
+| `test_roundtrip.sh` | `roundtrip` | Import -> export -> reimport, compare feature counts |
+| `test_duplicate_handling.sh` | `duplicate` | Double import behavior validation |
+| `test_error_handling.sh` | `error` | Negative tests: bad file, bad XML, wrong credentials, wrong host |
+| `test_info.sh` | `info` | Database info command validation |
+| `test_perf.sh` | `perf` | Performance test with large synthetic data (see below) |
 
-- Database System: (e.g., PostgreSQL with PostGIS). We will utilize the official 3DCityDB PostgreSQL/PostGIS Docker
-  image.
+### Test Helper Library (`test_helpers.sh`)
 
-- citydb-tool: Installed and configured. We will utilize the official citydb-tool Docker image.
+Shared functions sourced by all test scripts:
 
-- Test Runner: Test scripts (e.g., Python scripts, shell scripts) and their dependencies.
+- `db_query()` -- Execute SQL via psql, return trimmed result
+- `assert_equals()` -- Equality assertion with descriptive message
+- `assert_gt()` -- Greater-than numeric assertion
+- `assert_file_exists()` -- File existence + minimum size check
+- `assert_fails()` -- Verify a command exits non-zero (negative testing)
+- `get_feature_count()` -- Total feature count from DB
+- `get_feature_count_by_type()` -- Feature count filtered by objectclass name
+- `truncate_features()` -- Clear all features for test isolation
+- `resolve_citygml_input()` -- Resolve custom or default CityGML input file
+- `is_skipped()` -- Check if a test should be skipped via `SKIP_TESTS`
 
-The container will be started, and a script within it will initiate the database, run the tests, and then clean up. When
-using this approach, care must be taken to ensure the database service is fully up and ready before the citydb-tool or
-test runner attempts to connect.
+## Running Tests
 
-##### Pros of Single Container:
+### Full Suite
 
-- Simpler Dockerfile and docker run command.
+Runs all 11 test scripts in sequence:
 
-- Potentially faster startup time as only one container needs to be built and run.
+```bash
+docker compose up --build --exit-code-from test-all
+```
 
-- Less overhead for orchestration (no Docker Compose needed for basic setup).
+`--exit-code-from test-all` makes the command return non-zero if any test fails, suitable for CI/CD pipelines.
 
-Cons of Single Container:
+### Individual Tests
 
-- Less isolation between components; if one component has issues, it might affect others more directly.
+Run a specific test using its Docker Compose profile:
 
-- Larger Docker image size.
+```bash
+# CityGML import
+docker compose --profile import up --build --exit-code-from test-import
 
-- More complex to manage services within the container (e.g., ensuring PostgreSQL starts before tests run).
+# CityGML export (requires data in DB from a prior import)
+docker compose --profile export up --build --exit-code-from test-export
 
-#### Option B: Multi-Container Approach (Original Proposal)
+# CityJSON import
+docker compose --profile import-cityjson up --build --exit-code-from test-import-cityjson
 
-This approach uses separate containers for each major component, orchestrated by Docker Compose.
+# CityJSON export
+docker compose --profile export-cityjson up --build --exit-code-from test-export-cityjson
 
-- Database Container: A container running the official 3DCityDB PostgreSQL/PostGIS Docker image.
+# Filtered export (by feature type, by bounding box)
+docker compose --profile export-filtered up --build --exit-code-from test-export-filtered
 
-- citydb-tool Container: A container where the citydb-tool is installed and accessible. This could be a custom image
-  built on top of a base OS with Java and the citydb-tool JAR. We will utilize the official citydb-tool Docker image.
+# Delete and terminate operations
+docker compose --profile delete up --build --exit-code-from test-delete
 
-- Test Runner Container: A container responsible for orchestrating the tests. This container will contain test scripts (
-  e.g., Python scripts using pytest, or shell scripts) that interact with the database and the citydb-tool container.
+# Index management (status, drop, create)
+docker compose --profile index up --build --exit-code-from test-index
 
-##### Pros of Multi-Container:
+# Round-trip consistency (import -> export -> reimport -> compare)
+docker compose --profile roundtrip up --build --exit-code-from test-roundtrip
 
-- Better isolation between services.
+# Duplicate import handling
+docker compose --profile duplicate up --build --exit-code-from test-duplicate
 
-- Easier to update or swap individual components (e.g., try a different PostgreSQL version).
+# Error handling (bad input, bad credentials, bad host)
+docker compose --profile error up --build --exit-code-from test-error
 
-- More closely mimics production environments where services are often separated.
+# Database info command
+docker compose --profile info up --build --exit-code-from test-info
+```
 
-Cons of Multi-Container:
+### Skipping Tests
 
-- Requires Docker Compose for orchestration.
+When running the full suite, you can skip individual tests by setting the `SKIP_TESTS` environment variable with a comma-separated list of skip keys:
 
-- Potentially longer startup times due to multiple containers.
+```bash
+SKIP_TESTS=delete,roundtrip,error docker compose up --build --exit-code-from test-all
+```
 
-### 3.2. Workflow
+Available skip keys:
 
-The general workflow for running tests within this Docker environment will be:
+| Key | Test |
+|-----|------|
+| `import` | CityGML Import |
+| `export` | CityGML Export |
+| `cityjson-import` | CityJSON Import |
+| `cityjson-export` | CityJSON Export |
+| `filtered-export` | Filtered Export |
+| `delete` | Delete / Terminate |
+| `index` | Index Management |
+| `roundtrip` | Roundtrip |
+| `duplicate` | Duplicate Handling |
+| `error` | Error Handling |
+| `info` | Info Command |
 
-1. Environment Setup: Docker (or Docker Compose for multi-container) will be used to bring up the necessary container(
-   s) (database, citydb-tool, test runner).
+Skipped tests appear as **SKIP** in the report summary.
 
-2. Database Preparation: The test runner (or an entrypoint script within the single container) will connect to the
-   database instance and execute SQL scripts to create a fresh 3DCityDB database and schema for each test run.
+### Cleanup
 
-3. Test Execution: The test runner will execute predefined test scenarios, which involve:
+Remove all containers, networks, and the database volume:
 
-- Invoking citydb-tool commands (e.g., import, export) against the database.
+```bash
+docker compose down -v
+```
 
-- Performing database queries to verify the state of the data.
+The `-v` flag removes the named volume containing PostgreSQL data, ensuring a clean state for the next run.
 
-- Comparing exported data with expected outputs (in later stages).
+## Custom CityGML Dataset
 
-4. Environment Teardown: After tests are completed, all containers and their associated data will be removed to ensure a
-   clean state for subsequent runs.
+You can run the test suite against your own CityGML data instead of the built-in datasets.
 
-## 4. Initial Test Scenarios
+### Setup
 
-To start, we will focus on a foundational set of tests that cover the most critical end-to-end functionalities. These
-tests will serve as a baseline and can be expanded upon in the future.
+1. Place your `.gml` file somewhere under the `data/` directory (e.g., `data/custom/mydata.gml`).
+2. Set the `CITYGML_DATASET` environment variable to the **container path** (prefix with `/data/`):
 
-### 4.1. Scenario 1: Database Lifecycle Test
+```bash
+CITYGML_DATASET=/data/custom/mydata.gml \
+  docker compose up --build --exit-code-from test-all
+```
 
-This scenario verifies the ability to successfully create and destroy the 3DCityDB database and its schema.
+### Which tests use your data?
 
-- Objective: Confirm that the database setup and teardown process works without errors.
+| Uses custom dataset | Always uses built-in data |
+|---------------------|---------------------------|
+| CityGML Import | CityJSON Import / Export (needs `.city.json`) |
+| CityGML Export | Filtered Export (needs building + road) |
+| Delete / Terminate | Error Handling (needs invalid XML) |
+| Roundtrip | Index Management (DB-only, no data) |
+| Duplicate Handling | |
+| Info Command | |
 
-- Steps:
+### Examples
 
-    1. Create Database: The test runner connects to the PostgreSQL instance and executes SQL commands to create a new
-       database.
+```bash
+# Run all tests with custom data
+CITYGML_DATASET=/data/custom/mydata.gml \
+  docker compose up --build --exit-code-from test-all
 
-    2. Create Schema: The test runner then executes the 3DCityDB schema creation scripts against the newly created database.
+# Run with custom data, skip some tests
+CITYGML_DATASET=/data/custom/mydata.gml \
+  SKIP_TESTS=delete,duplicate,error \
+  docker compose up --build --exit-code-from test-all
 
-    3. Verify Schema: Perform a simple database query to ensure core tables of the 3DCityDB schema exist.
+# Run only the import test with custom data
+CITYGML_DATASET=/data/custom/mydata.gml \
+  docker compose --profile import up --build --exit-code-from test-import
+```
 
-    4. Delete Database: The test runner executes SQL commands to drop the entire database.
+> **Note:** The database is configured for SRID 25832 (UTM Zone 32N). Datasets using a different CRS may import successfully, but spatial filter tests (bounding box export) may produce unexpected results.
 
-- Expected Outcome: All steps complete successfully without any errors reported by the database or the citydb-tool.
+## Performance Test
 
-### 4.2. Scenario 2: Data Import Test
+The performance test generates a large synthetic CityGML dataset, imports and exports it, and reports detailed timing metrics plus database statistics. It runs as a separate profile and is **not** included in the default test suite.
 
-- This scenario verifies the successful import of a 3D city model dataset using the citydb-tool.
+### How it works
 
-- Objective: Ensure the citydb-tool can import a valid CityGML/CityJSON file into the 3DCityDB.
+1. **Generates** N buildings (each with 4 WallSurfaces + 1 RoofSurface) on a spatial grid
+2. **Imports** the generated file into the database, measuring wall-clock time
+3. **Validates** feature counts by type (Building, WallSurface, RoofSurface)
+4. **Exports** all data back to CityGML, measuring wall-clock time
+5. **Collects** database statistics: table sizes, index sizes, total DB size, scan counts
+6. **Prints** a formatted summary and writes a report to `output/report_perf_*.md`
 
-- Prerequisites: A fresh 3DCityDB database and schema (as set up in Scenario 1).
+### Running
 
-- Steps:
+```bash
+# Default: 10,000 buildings (~150 MB generated file)
+docker compose --profile perf up --build --exit-code-from test-perf
 
-    1. Import Data: The test runner invokes the citydb-tool import command, pointing to a sample CityGML/CityJSON file
-       and the configured database connection.
+# Custom scale: 50,000 buildings (~750 MB)
+BUILDING_COUNT=50000 docker compose --profile perf up --build --exit-code-from test-perf
 
-    2. Verify Import Completion: Check the exit code of the citydb-tool command and parse its output for success messages.
+# Small quick test: 1,000 buildings (~15 MB)
+BUILDING_COUNT=1000 docker compose --profile perf up --build --exit-code-from test-perf
+```
 
-    3. (Future Enhancement) Verify Data Count: Query specific tables in the 3DCityDB (e.g., cityobject, building) to
-       count the number of imported features and compare it against the expected count from the source file.
+### Approximate dataset sizes
 
-- Expected Outcome: The citydb-tool reports a successful import, and no errors are logged.
+| Buildings | Generated file | Features in DB |
+|-----------|---------------|----------------|
+| 1,000 | ~15 MB | ~6,000 |
+| 10,000 | ~150 MB | ~60,000 |
+| 50,000 | ~750 MB | ~300,000 |
+| 100,000 | ~1.5 GB | ~600,000 |
 
-### 3. Scenario 3: Data Export Test
+Each building produces 6 features (1 Building + 4 WallSurface + 1 RoofSurface).
 
-This scenario verifies the successful export of 3D city model data from the 3DCityDB using the citydb-tool.
+### Data generator
 
-- Objective: Ensure the citydb-tool can export data from the 3DCityDB into a CityGML/CityJSON file.
+The `scripts/generate_citygml.sh` script can also be used standalone to create synthetic CityGML data:
 
-- Prerequisites: A 3DCityDB database containing previously imported data (e.g., from Scenario 2).
+```bash
+# Inside the container or any bash environment
+./scripts/generate_citygml.sh 5000 output/synthetic_5k.gml
+```
 
-- Steps:
+Arguments: `BUILDING_COUNT` (default 10000), `OUTPUT_FILE` (default `/data/synthetic/large_dataset.gml`).
 
-    1. Export Data: The test runner invokes the citydb-tool export command, specifying an output file path and the
-       database connection.
+## Test Reports
 
-    2. Example command: citydb-tool -e export -f /output/exported.gml -db test_citydb ...
+Every full suite run (`test-all`) and every standalone performance test (`test-perf`) generates a timestamped Markdown report in the `output/` directory:
 
-    3. Verify Export Completion: Check the exit code of the citydb-tool command and parse its output for success
-       messages.
+- **Full suite:** `output/report_2026-02-09_143022.md`
+- **Performance test:** `output/report_perf_2026-02-09_150512.md`
 
-    4. (Future Enhancement) Verify Exported File: Check the existence and non-zero size of the exported file. Later,
-       more advanced validation could involve parsing the exported file and comparing its content (e.g., feature count,
-       specific attributes) with the original imported data.
+Reports include:
+- Date, database info, and custom dataset details (if any)
+- Per-test results (PASS / FAIL / SKIP) with assertion details
+- Duration per test
+- Summary table with totals
+- For performance tests: timing breakdown, feature counts, table sizes, index stats
 
-- Expected Outcome: The citydb-tool reports a successful export, and a valid output file is created.
+## Test Data
 
-## 5. Data for Testing
+### Railway Scene (`data/Railway_Scene/`)
 
-For the initial set of tests, we will use small, representative 3D city model datasets.
+A CityGML 3.0 LoD3 dataset containing buildings, roads, and other city objects with texture appearances. Used for import/export and round-trip tests.
 
-- Sample CityGML/CityJSON Files:
+### Synthetic Data (`data/synthetic/`)
 
-    - Start with a very simple CityGML/CityJson file containing a single building or a few basic city objects. This minimizes
-      complexity and speeds up test execution.
+Minimal test files created specifically for targeted test scenarios:
 
-    - As the test suite grows, we will introduce more complex datasets, including:
+| File | Format | Description |
+|------|--------|-------------|
+| `minimal_building.gml` | CityGML 3.0 | 1 Building with BuildingPart, WallSurface, RoofSurface (EPSG:25832) |
+| `building_v2.gml` | CityGML 2.0 | Same building in CityGML 2.0 format for version compatibility testing |
+| `minimal_building.city.json` | CityJSON 2.0 | 1 Building with Solid geometry |
+| `minimal_road.gml` | CityGML 3.0 | 1 Road with TrafficSpace and TrafficArea |
+| `invalid_citygml.gml` | Malformed XML | Intentionally broken XML for error handling tests |
 
-        - Files with various geometry types (LoD0-LoD4).
-        - Files with large numbers of features to test performance.
-        - Datasets representing different CityGML versions to test compatibility as highlighted in the 3DCityDB
-          documentation.
+## Configuration Files
 
-    - Data Location: These sample files will be stored within the test suite's repository, accessible to the citydb-tool
-container during test runs (e.g., mounted as a Docker volume).
+JSON configuration files for citydb-tool operations are in `config/`:
 
-## 6. Future Considerations
+| File | Purpose |
+|------|---------|
+| `config_citygml_import.json` | CityGML import with DB connection settings |
+| `config_citygml_export.json` | CityGML export settings |
+| `config_cityjson_export.json` | CityJSON 2.0 export settings |
+| `config_export_buildings.json` | Export with Building feature type filter |
+| `config_export_bbox.json` | Export with bounding box filter |
+| `config_bad_credentials.json` | Wrong password for error testing |
+| `config_bad_host.json` | Nonexistent host for error testing |
 
-As the test suite matures, we plan to expand its capabilities to include:
+## Project Structure
 
-- Comprehensive Data Validation: Implement robust checks to compare imported data with original sources and exported data
-with expected outputs (e.g., using schema validation, geometric checks, attribute comparisons).
+```
+testsuite/
+  docker-compose.yml       Docker Compose service definitions
+  Dockerfile               Custom test image (citydb-tool + psql)
+  config/                  JSON configs for citydb-tool operations
+    config_citygml_import.json
+    config_citygml_export.json
+    config_cityjson_export.json
+    config_export_buildings.json
+    config_export_bbox.json
+    config_bad_credentials.json
+    config_bad_host.json
+  data/
+    Railway_Scene/         CityGML 3.0 LoD3 dataset with textures
+    synthetic/             Minimal test files for targeted scenarios
+  scripts/
+    run_all_tests.sh       Master test runner
+    test_helpers.sh        Shared assertion and DB query functions
+    generate_citygml.sh    Synthetic CityGML data generator
+    test_import.sh         CityGML import test
+    test_export.sh         CityGML export test
+    test_import_cityjson.sh
+    test_export_cityjson.sh
+    test_export_filtered.sh
+    test_delete.sh
+    test_index.sh
+    test_roundtrip.sh
+    test_duplicate_handling.sh
+    test_error_handling.sh
+    test_info.sh
+    test_perf.sh           Performance / stress test
+  output/                  Generated export files and reports (gitignored)
+```
 
-- Performance Testing: Measure the time taken for import/export operations with large datasets to identify performance
-bottlenecks.
+## CI/CD Integration
 
-- Negative Testing: Develop tests that feed invalid input to the citydb-tool or database to verify proper error handling
-and graceful failure.
+The test suite is designed for CI/CD pipelines. The `--exit-code-from` flag ensures the Docker Compose command returns non-zero on test failure:
 
-- Database Version Compatibility: Test against different versions of supported databases (e.g., PostgreSQL 12, 13, 14, 15,
-16).
-
-- Integration with CI/CD: Integrate the Docker-based test suite into our continuous integration and continuous deployment
-pipelines to automatically run tests on every code commit.
-
-- Unit and Integration Tests: Beyond end-to-end tests, develop more granular unit tests for specific components of the
-citydb-tool and integration tests for interactions between modules.
-
-This README provides a roadmap for establishing a robust testing foundation for 3DCityDB 5.0 and the citydb-tool. By
-starting with essential scenarios in a controlled Docker environment, we can systematically build a comprehensive and
-reliable test suite.
+```yaml
+# Example GitHub Actions step
+- name: Run integration tests
+  run: |
+    cd testsuite
+    docker compose up --build --exit-code-from test-all
+    docker compose down -v
+```
