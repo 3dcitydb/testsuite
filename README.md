@@ -44,7 +44,7 @@ The versions actually used are written to the header of every test report.
 Exports are validated against the official schemas, which are baked into the test image:
 
 - CityGML 1.0/2.0/3.0 and GML: the XSDs bundled with citygml4j, validated offline with `xmllint`.
-- CityJSON: the CityJSON and CityJSONFeature schemas, validated with `python3-jsonschema`. CityJSON Sequences are checked line by line. The schema version is set by the build arg `CITYJSON_SCHEMA_VERSION`; building the image downloads it from `3d.bk.tudelft.nl`.
+- CityJSON: the CityJSON and CityJSONFeature schemas, validated with `python3-jsonschema`. CityJSON Sequences are checked line by line. The schemas are stored in `schemas/cityjson/<version>/` (from [cityjson/specs](https://github.com/cityjson/specs), CC0 1.0), so building the image needs no download. The version is selected by the build arg `CITYJSON_SCHEMA_VERSION`.
 
 ### Database Connection
 
