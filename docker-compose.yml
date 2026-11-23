@@ -24,8 +24,11 @@ services:
       - POSTGRES_PASSWORD=test
       - POSTGRES_DB=citydb
       - SRID=25832
+    # PostgreSQL 18+ images keep their data in /var/lib/postgresql/<major>/docker
+    # and refuse to start with a mount at /var/lib/postgresql/data. Mounting the
+    # parent directory works for all PostgreSQL versions.
     volumes:
-      - citydb_data:/var/lib/postgresql/data
+      - citydb_data:/var/lib/postgresql
     # Check via TCP: during initialization the entrypoint runs a temporary
     # server that only listens on the Unix socket, so a socket check would
     # report healthy before the 3DCityDB setup has finished.
