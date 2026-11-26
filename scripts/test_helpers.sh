@@ -24,8 +24,8 @@ report_init() {
 # 3DCityDB Test Suite Report
 
 **Date:** $(date '+%Y-%m-%d %H:%M:%S')
-**citydb-tool:** $(citydb --version 2>/dev/null | head -1 | sed 's/^citydb-tool //')
-**3DCityDB:** $(db_query "SELECT version FROM citydb_pkg.citydb_version();" 2>/dev/null) (PostgreSQL $(db_query "SELECT split_part(current_setting('server_version'), ' ', 1);" 2>/dev/null), PostGIS $(db_query "SELECT postgis_lib_version();" 2>/dev/null))
+**citydb-tool:** $(citydb --version 2>/dev/null | head -1 | sed 's/^citydb-tool //') (image 3dcitydb/citydb-tool:${CITYDB_TOOL_VERSION:-unknown})
+**3DCityDB:** $(db_query "SELECT version FROM citydb_pkg.citydb_version();" 2>/dev/null) (PostgreSQL $(db_query "SELECT split_part(current_setting('server_version'), ' ', 1);" 2>/dev/null), PostGIS $(db_query "SELECT postgis_lib_version();" 2>/dev/null), image 3dcitydb/3dcitydb-pg:${CITYDB_PG_VERSION:-unknown})
 **SRID:** 25832 (UTM Zone 32N)
 
 ---

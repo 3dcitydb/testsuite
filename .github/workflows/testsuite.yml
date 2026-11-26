@@ -5,16 +5,16 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # nightly run against the latest images (early warning for new releases)
+    # nightly run: the edge images change without commits in this repository
     - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       citydb_tool_version:
-        description: "citydb-tool image version (empty = pinned default)"
+        description: "citydb-tool image version (empty = edge)"
         required: false
         default: ""
       citydb_pg_version:
-        description: "3dcitydb-pg image version (empty = pinned default)"
+        description: "3dcitydb-pg image version (empty = edge)"
         required: false
         default: ""
       skip_tests:
@@ -41,17 +41,11 @@ jobs:
 
       - name: Select image versions
         env:
-          EVENT_NAME: ${{ github.event_name }}
           INPUT_TOOL_VERSION: ${{ inputs.citydb_tool_version }}
           INPUT_PG_VERSION: ${{ inputs.citydb_pg_version }}
         run: |
-          # The nightly run tests the latest images as an early warning for
-          # new releases; all other runs use the pinned defaults unless a
-          # version is given for a manual run.
-          if [ "$EVENT_NAME" = "schedule" ]; then
-            echo "CITYDB_TOOL_VERSION=latest" >> "$GITHUB_ENV"
-            echo "CITYDB_PG_VERSION=latest" >> "$GITHUB_ENV"
-          fi
+          # All runs use the edge images (defaults in docker-compose.yml)
+          # unless a version is given for a manual run.
           if [ -n "$INPUT_TOOL_VERSION" ]; then
             echo "CITYDB_TOOL_VERSION=$INPUT_TOOL_VERSION" >> "$GITHUB_ENV"
           fi
