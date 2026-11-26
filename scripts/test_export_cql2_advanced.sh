@@ -392,16 +392,16 @@ else
   assert_export_ids "$(b 01 02 03 04 05 06 07 08)" "$OUT" "$TOP" "L05: --sql-filter selects the buildings"
 fi
 
-# L06: the backslash escapes the LIKE wildcards.  It must itself be escaped
-# inside the character literal, so a literal '_' is written as '\\_' in the
-# CQL2 text.  A single backslash is consumed by the character literal and
-# '\_' remains a wildcard (L06b).
+# L06: the backslash escapes the LIKE wildcards.  Inside the character
+# literal '\\' is an escaped backslash, so '\\_' matches a literal '_'.  A
+# backslash that does not start an escape sequence of the character literal
+# is kept, so '\_' matches a literal '_' as well (L06b).
 cli_export -f "core:objectId LIKE 'ROAD\\\\_CQL2\\\\_0%'"
 assert_export_ids "$(r 01 02)" "$OUT" "$TOP" "L06: '\\\\_' matches a literal underscore"
 cli_export -f "name LIKE 'Road\\\\_0%'"
 assert_export_ids "" "$OUT" "$TOP" "L06: '\\\\_' does not match a blank"
 cli_export -f "name LIKE 'Road\_0%'"
-assert_export_ids "$(r 01 02)" "$OUT" "$TOP" "L06b: '\\_' is still a wildcard"
+assert_export_ids "" "$OUT" "$TOP" "L06b: '\\_' escapes the wildcard as well"
 
 # L07: the empty string literal '' (skipped on a parse error).
 if cli_export -f "name <> ''" >/dev/null; then
@@ -610,12 +610,11 @@ assert_gt 0 "$EXPECTED_TOP" "P14: PostGIS finds top-level features in the statio
 cli_export -f "S_INTERSECTS(core:envelope, $STATION_BBOX)"
 assert_equals "$EXPECTED_TOP" "$(grep -c '<cityObjectMember>' "$OUT")" "P14: top-level result matches PostGIS ($EXPECTED_TOP features)"
 
-# P15: NOT on a multi-valued path is applied per value ("has a boundary
-# surface not named Roof 3"), not to the existence.  The semantics is still
-# open upstream (cf. O17/P09); the current behavior is pinned so that a
-# change is noticed.
+# P15: NOT on a multi-valued path negates the whole predicate ("has no
+# boundary surface named Roof 3") and requires the property to exist; the
+# station and the chapel both have a roof named Roof 3 (cf. O17/P09).
 cli_export -t bldg:Building -f "NOT core:boundary.core:name = 'Roof 3'"
-assert_export_ids "$BOAT $STATION $CHAPEL" "$OUT" bldg:Building "P15: NOT on a multi-valued path negates per value"
+assert_export_ids "$BOAT" "$OUT" bldg:Building "P15: NOT on a multi-valued path: no boundary surface named Roof 3"
 
 # X21-X22: limits of sub-feature paths
 assert_fails_with "is not a valid child of" \

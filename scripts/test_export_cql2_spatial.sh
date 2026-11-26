@@ -17,7 +17,8 @@
 #   SP24-SP30  combinations with attributes, NOT, OR, sorting, limits
 #   SP31-SP35  filter CRS (EPSG:4326, EPSG:3857, CRS84)
 #   SP36-SP38  tiling and CityJSON output with spatial filters
-#   SP39-SP42  z range of 3D BBOXes, edge behavior and negative cases
+#   SP39-SP42  z range of 3D BBOXes, edge behavior, negative cases and
+#              geometry collections
 #   SP43       delete with spatial filters (runs last, modifies the data)
 #
 # Known issues of citydb-tool <= 1.4.0 that are fixed upstream are detected
@@ -274,7 +275,8 @@ assert_equals "SP_COURTYARD SP_TOWER SP_TWIN" "$(grep -oE '"SP_[A-Z]+"' "$OUT_JS
 assert_schema_valid "$OUT_JSON" "SP38: CityJSON export is schema-valid"
 
 # ---------------------------------------------------------------------------
-# SP39-SP42: z range of 3D BBOXes, edge behavior and negative cases
+# SP39-SP42: z range of 3D BBOXes, edge behavior, negative cases and
+# geometry collections
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- 3D BBOX, edge and negative cases (SP39-SP42) ---"
@@ -302,9 +304,10 @@ assert_fails_with "do not form a closed linestring" \
   "SP41: polygon literal with an open ring" \
   citydb --config "$CFG" export citygml -o "$OUT" -f "S_INTERSECTS(core:envelope, POLYGON((460000 5439000, 460030 5439000, 460030 5439020)))"
 
-assert_fails_with "Geometry collections are not supported" \
-  "SP42: GEOMETRYCOLLECTION literal" \
-  citydb --config "$CFG" export citygml -o "$OUT" -f "S_INTERSECTS(core:envelope, GEOMETRYCOLLECTION(POINT(460000 5439000)))"
+# SP42: GEOMETRYCOLLECTION literal with one point inside the envelope of
+# SP_L and one inside the tower (cross-checked with PostGIS).
+cli_export -f "S_INTERSECTS(core:envelope, GEOMETRYCOLLECTION(POINT(460010 5439010), POINT(460205 5439205)))"
+assert_export_ids "$(sp L TOWER)" "$OUT" "$TOP" "SP42: GEOMETRYCOLLECTION literal"
 
 # ---------------------------------------------------------------------------
 # SP43 (last, modifies the data): preview, terminate and delete

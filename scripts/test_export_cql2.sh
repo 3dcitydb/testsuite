@@ -9,10 +9,12 @@
 #   T01-T15  basic operators (CLI CQL2 text + config with CQL2 text/JSON)
 #   C01-C11  complex queries (arithmetic, index access, nested paths, SQL(),
 #            CASEI/ACCENTI, CQL2 JSON in config)
-#   G01-G08  spatial operators, CRS transformation, 3D, tiling
+#   G01-G09  spatial operators, CRS transformation, 3D, tiling, geometry
+#            collections
 #   F01-F10  native building attributes, height short form, object ids,
 #            prefixed generic attributes, S_DISJOINT, address paths
-#   N01-N10  negative cases (exit != 0 plus error message check)
+#   N01-N10  negative cases (exit != 0 plus error message check; N07 and
+#            N08 became G09 and C02b)
 #   E01      unknown attribute without namespace prefix (pinned fallback)
 #   D01-D04  sorting, pagination, delete with CQL2 filter, validity filters
 #
@@ -178,9 +180,14 @@ cli_export "$OUT" -f "storeys::int * 3 + 1 > 2 ^ 4"
 assert_export_count 3 "$OUT" "bldg:Building,tran:Road" "C01: arithmetic with precedence"
 
 # C02: 1-based index access on a multi-valued attribute (needs -t for the
-# bldg: prefix).  The explicit index() form is rejected by the tool, see N08.
+# bldg: prefix).
 cli_export "$OUT" -t bldg:Building -f "bldg:function[2] = '2000'"
 assert_export_count 2 "$OUT" "bldg:Building" "C02: bldg:function[2] = '2000'"
+
+# C02b: the explicit index() form as a predicate on the last step; only
+# B07 and B08 have a second function value.
+cli_export "$OUT" -t bldg:Building -f "bldg:function[index() >= 2] IS NOT NULL"
+assert_export_ids "BLDG_CQL2_07 BLDG_CQL2_08" "$OUT" bldg:Building "C02b: index() predicate on the last step"
 
 cli_export "$OUT" -t bldg:Building -f "con:height[con:status = 'measured'].con:value > 20"
 assert_export_count 3 "$OUT" "bldg:Building" "C03: nested path with step predicate"
@@ -232,10 +239,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# G01-G08: spatial operators
+# G01-G09: spatial operators
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Geo cases (G01-G08) ---"
+echo "--- Geo cases (G01-G09) ---"
 
 cli_export "$OUT" -f "S_WITHIN(core:envelope, POLYGON((458780 5438330, 458860 5438330, 458860 5438400, 458780 5438400, 458780 5438330)))"
 assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "G01: S_WITHIN west polygon (== T12)"
@@ -294,6 +301,11 @@ assert_export_count 5 /output/cql2_tiles_0_0.gml "bldg:Building,tran:Road" "G08:
 assert_export_count 5 /output/cql2_tiles_1_0.gml "bldg:Building,tran:Road" "G08: east tile has 5 features"
 assert_schema_valid /output/cql2_tiles_0_0.gml "G08: west tile is schema-valid"
 assert_schema_valid /output/cql2_tiles_1_0.gml "G08: east tile is schema-valid"
+
+# G09: GEOMETRYCOLLECTION literal; the west polygon selects the west
+# cluster, the point lies outside the data.
+cli_export "$OUT" -f "S_INTERSECTS(core:envelope, GEOMETRYCOLLECTION(POLYGON((458780 5438330, 458860 5438330, 458860 5438400, 458780 5438400, 458780 5438330)), POINT(1 2)))"
+assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "G09: GEOMETRYCOLLECTION literal (== T12)"
 
 # ---------------------------------------------------------------------------
 # F01-F10: native building attributes, object ids and address paths.
@@ -390,15 +402,9 @@ assert_fails_with "Use explicit type casts." \
   "N06: missing cast on generic attribute" \
   citydb --config "$CFG" export citygml -o "$OUT" -f "storeys = 4"
 
-assert_fails_with "Geometry collections are not supported" \
-  "N07: GEOMETRYCOLLECTION literal" \
-  citydb --config "$CFG" export citygml -o "$OUT" -f "S_INTERSECTS(core:envelope, GEOMETRYCOLLECTION(POINT(1 2)))"
-
-# N08: the explicit index() form of C02 is rejected by citydb-tool
-# (pinned).
-assert_fails_with "Predicates on the last step" \
-  "N08: index() predicate on last step of IS NOT NULL" \
-  citydb --config "$CFG" export citygml -o "$OUT" -t bldg:Building -f "bldg:function[index() >= 2] IS NOT NULL"
+# N07 (GEOMETRYCOLLECTION literal) and N08 (index() predicate on the last
+# step) are supported by citydb-tool edge and became the positive cases G09
+# and C02b.
 
 # N09: native bldg: property without type context (the same filter works
 # with -t bldg:Building, see F06)
