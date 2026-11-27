@@ -213,14 +213,11 @@ fresh_import --no-appearances "$RAILWAY"
 assert_equals 0 "$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NULL;")" \
   "IM14: --no-appearances skips the appearances of features"
 # The global appearances of implicit geometries (5 in the Railway scene)
-# are checked separately (skipped if they are imported).
-IMPLICIT_APP=$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NOT NULL;")
-if [ "$IMPLICIT_APP" != "0" ]; then
-  skip_case "IM14 (implicit geometries)" "$IMPLICIT_APP appearances of implicit geometries imported despite --no-appearances; known issue of citydb-tool 1.4.0, fixed upstream"
-else
-  assert_equals "0 0" "$(db_query "SELECT (SELECT count(*) FROM surface_data), (SELECT count(*) FROM tex_image);" | tr -d '|' | xargs)" \
-    "IM14: --no-appearances skips surface data and textures"
-fi
+# are skipped as well.
+assert_equals 0 "$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NOT NULL;")" \
+  "IM14: --no-appearances skips the appearances of implicit geometries"
+assert_equals "0 0" "$(db_query "SELECT (SELECT count(*) FROM surface_data), (SELECT count(*) FROM tex_image);" | tr -d '|' | xargs)" \
+  "IM14: --no-appearances skips surface data and textures"
 assert_equals 231 "$(get_feature_count)" "IM14: features are still imported"
 
 fresh_import -a visual "$RAILWAY"
@@ -229,11 +226,8 @@ assert_equals 175 "$(db_query "SELECT count(*) FROM appearance;")" "IM14: --appe
 fresh_import -a other "$RAILWAY"
 assert_equals 0 "$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NULL;")" \
   "IM14: --appearance-theme with unknown theme skips the appearances of features"
-# Same check for the theme filter on the appearances of implicit geometries.
-IMPLICIT_APP=$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NOT NULL;")
-if [ "$IMPLICIT_APP" != "0" ]; then
-  skip_case "IM14 (theme, implicit geometries)" "$IMPLICIT_APP appearances of implicit geometries imported despite an unknown --appearance-theme; known issue of citydb-tool 1.4.0, fixed upstream"
-fi
+assert_equals 0 "$(db_query "SELECT count(*) FROM appearance WHERE implicit_geometry_id IS NOT NULL;")" \
+  "IM14: --appearance-theme with unknown theme skips the appearances of implicit geometries"
 
 # ---------------------------------------------------------------------------
 # IM15: index mode

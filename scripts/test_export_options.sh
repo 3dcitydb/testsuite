@@ -69,18 +69,7 @@ assert_equals 0 "$(grep -c 'usageCode' "$OUT" || true)" "EX02: generic code attr
 
 opt_export -v 1.0
 assert_equals 1 "$(grep -c 'xmlns:bldg="http://www.opengis.net/citygml/building/1.0"' "$OUT")" "EX01: CityGML 1.0 namespace"
-# citydb-tool <= 1.4.0 writes constructs that only exist since CityGML 2.0
-# into CityGML 1.0 exports (fixed upstream in citygml4j).  They are removed
-# from a copy and the rest of the file is still validated.
-if grep -qE '<gen:measureAttribute|<gen:genericAttributeSet|<bldg:[a-zA-Z]+ codeSpace=' "$OUT"; then
-  skip_case "EX01 (1.0 schema)" "CityGML 1.0 export contains CityGML 2.0 constructs, validated without them; known issue of citydb-tool <= 1.4.0, fixed upstream"
-  sed -e '/<gen:measureAttribute/,/<\/gen:measureAttribute>/d' \
-      -e '/<gen:genericAttributeSet/,/<\/gen:genericAttributeSet>/d' \
-      -e 's/ codeSpace="[^"]*"//g' "$OUT" > "$OUT_DIR/case_1_0_stripped.gml"
-  assert_schema_valid "$OUT_DIR/case_1_0_stripped.gml" "EX01: CityGML 1.0 export is schema-valid apart from the 2.0 constructs"
-else
-  assert_schema_valid "$OUT" "EX01: CityGML 1.0 export is schema-valid"
-fi
+assert_schema_valid "$OUT" "EX01: CityGML 1.0 export is schema-valid"
 assert_export_count 8 "$OUT" bldg:Building "EX01: CityGML 1.0 contains all buildings"
 
 assert_fails_with "Invalid value for option '--citygml-version'" "EX01: unsupported CityGML version" \

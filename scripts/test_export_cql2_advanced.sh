@@ -22,13 +22,6 @@
 #   P01-P15  property paths over sub-features (boundary surfaces,
 #            installations), filters on nested feature types
 #   X01-X22  negative cases (exit != 0 plus error message check)
-#
-# Known issues of citydb-tool <= 1.4.0 that are fixed upstream are detected
-# at runtime and SKIPPED: O08, O09, S04, L04, L05, L07 and the message check
-# of X16 (1.3.x only).  O17 and P09 are SKIPPED as long as two conditions on
-# the same multi-valued path must hold for the same value: the semantics of
-# repeated predicates and NOT on multi-valued paths is still open upstream
-# (cf. P15).
 
 set -e
 
@@ -78,33 +71,12 @@ assert_equals 10 "$(get_feature_count)" "Setup: 10 features imported"
 assert_equals 3 "$(db_query "SELECT count(*) FROM property WHERE name = 'energy';")" "Setup: 3 generic attribute sets"
 
 # ---------------------------------------------------------------------------
-# Capability probes (see header)
+# Probe: unaccent extension for ACCENTI (install on demand if available).
 # ---------------------------------------------------------------------------
-# A probe hits on an empty result; only that signature leads to a skip, any other deviation runs the cases so that they fail
-# visibly.
-# probe_empty <expected-empty types> <cli options...>
-probe_empty() {
-  local types="$1"
-  shift
-  cli_export "$@" >/dev/null && [ "$(export_ids "$OUT" "$types")" = "" ]
-}
-
-DIVISION_OK=1
-probe_empty "$TOP" -f "storeys::int / 2 = 2.5" && DIVISION_OK=0
-DIVISION_SKIP="'/' on two integers returns an integer result; known issue of citydb-tool <= 1.4.0, fixed upstream"
-
-UNARY_OK=1
-probe_empty "$TOP" -f "(-storeys::int) < -6" && UNARY_OK=0
-UNARY_SKIP="unary minus on a parenthesized expression is dropped; known issue of citydb-tool <= 1.4.0, fixed upstream"
-
-SAMEPATH_OK=1
-probe_empty bldg:Building -t bldg:Building -f "bldg:function = '1010' AND bldg:function = '2000'" && SAMEPATH_OK=0
-SAMEPATH_SKIP="two conditions on the same multi-valued path must hold for the same value; semantics still open upstream"
-
 db_query "CREATE EXTENSION IF NOT EXISTS unaccent;" >/dev/null 2>&1 || true
 UNACCENT_OK=$(db_query "SELECT count(*) FROM pg_extension WHERE extname = 'unaccent';")
 
-echo "Probes: division=$DIVISION_OK unary-minus=$UNARY_OK same-path-and=$SAMEPATH_OK unaccent=$UNACCENT_OK"
+echo "Probes: unaccent=$UNACCENT_OK"
 
 # ---------------------------------------------------------------------------
 # O01-O17: operators and expressions
@@ -133,22 +105,14 @@ assert_export_ids "$(b 04 05)" "$OUT" "$TOP" "O06: integer division (div)"
 cli_export -f "storeys::int % 2 = 0"
 assert_export_ids "$(b 02 04 06 08)" "$OUT" "$TOP" "O07: modulo"
 
-if [ "$DIVISION_OK" = "1" ]; then
-  cli_export -f "storeys::int / 2 = 2"
-  assert_export_ids "$(b 04)" "$OUT" "$TOP" "O08: division of integers yields a decimal"
-else
-  skip_case "O08" "$DIVISION_SKIP"
-fi
+cli_export -f "storeys::int / 2 = 2"
+assert_export_ids "$(b 04)" "$OUT" "$TOP" "O08: division of integers yields a decimal"
 
 cli_export -f "storeys::int / 2.0 = 2.5"
 assert_export_ids "$(b 05)" "$OUT" "$TOP" "O08b: division with a decimal literal"
 
-if [ "$UNARY_OK" = "1" ]; then
-  cli_export -f "(-storeys::int) < -6"
-  assert_export_ids "$(b 07 08)" "$OUT" "$TOP" "O09: unary minus on a property"
-else
-  skip_case "O09" "$UNARY_SKIP"
-fi
+cli_export -f "(-storeys::int) < -6"
+assert_export_ids "$(b 07 08)" "$OUT" "$TOP" "O09: unary minus on a property"
 
 cli_export -f "storeys::int * -1 < -6"
 assert_export_ids "$(b 07 08)" "$OUT" "$TOP" "O09b: negative literal in an arithmetic expression"
@@ -181,12 +145,8 @@ assert_export_ids "$(b 01 02 03 04) $(r 01)" "$OUT" "$TOP" "O15: double negation
 cli_export -f "CASEI(name) LIKE CASEI('building 0%')"
 assert_export_ids "$(b 01 02 03 04 05 06 07 08)" "$OUT" "$TOP" "O16: CASEI on both sides of LIKE"
 
-if [ "$SAMEPATH_OK" = "1" ]; then
-  cli_export -t bldg:Building -f "bldg:function = '1010' AND bldg:function = '2000'"
-  assert_export_ids "$(b 07 08)" "$OUT" bldg:Building "O17: AND over two values of a multi-valued property"
-else
-  skip_case "O17" "$SAMEPATH_SKIP"
-fi
+cli_export -t bldg:Building -f "bldg:function = '1010' AND bldg:function = '2000'"
+assert_export_ids "$(b 07 08)" "$OUT" bldg:Building "O17: AND over two values of a multi-valued property"
 
 # ---------------------------------------------------------------------------
 # K01-K14: typed generic attributes.  The cast selects the typed value
@@ -335,14 +295,9 @@ cli_export -t bldg:Building -s "district::string-,storeys::int+" --limit 3
 assert_equals "BLDG_CQL2_07 BLDG_CQL2_08 BLDG_CQL2_05" "$(ordered_ids "$OUT" "$TOP")" "S03: sort by two keys"
 
 # S04: features without the sort attribute come last, also when sorting
-# descending.  citydb-tool <= 1.4.0 uses the PostgreSQL default NULLS FIRST
-# for descending sorts (skipped on that result).
+# descending.
 cli_export -s "storeys::int-" --limit 2
-if [ "$(export_ids "$OUT" "$TOP")" = "$(r 01 02 | xargs)" ]; then
-  skip_case "S04" "NULL values come first on a descending sort; changed after citydb-tool 1.4.0 (NULL values last)"
-else
-  assert_equals "BLDG_CQL2_08 BLDG_CQL2_07" "$(ordered_ids "$OUT" "$TOP")" "S04: NULL values last on descending sort"
-fi
+assert_equals "BLDG_CQL2_08 BLDG_CQL2_07" "$(ordered_ids "$OUT" "$TOP")" "S04: NULL values last on descending sort"
 cli_export -s "storeys::int+"
 assert_equals "ROAD_CQL2_01 ROAD_CQL2_02" "$(ordered_ids "$OUT" "$TOP" | xargs -n1 | tail -2 | sort | xargs)" \
   "S04: NULL values last on ascending sort"
@@ -369,52 +324,34 @@ assert_export_ids "$(b 06 07 08) $(r 01 02)" "$OUT" "$TOP" "L02: IS NULL on a ty
 cli_export -t bldg:Building -f "bldg:address.core:city IS NULL"
 assert_export_ids "$(b 04 06 07 08)" "$OUT" bldg:Building "L03: IS NULL on an attribute behind a relation"
 
-# L04: IS [NOT] NULL on paths that end in a relation or a complex property
-# (skipped on an empty result).
-if cli_export -t bldg:Building -f "bldg:address IS NOT NULL" >/dev/null \
-    && [ "$(export_ids "$OUT" bldg:Building)" = "" ]; then
-  skip_case "L04" "IS [NOT] NULL on paths ending in a relation or complex property returns no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
-else
-  cli_export -t bldg:Building -f "bldg:address IS NOT NULL"
-  assert_export_ids "$(b 01 02 03 05)" "$OUT" bldg:Building "L04: IS NOT NULL on a relation"
-  cli_export -t bldg:Building -f "con:height IS NOT NULL"
-  assert_export_ids "$(b 01 02 03 04 05 06 07 08)" "$OUT" bldg:Building "L04: IS NOT NULL on a complex property"
-fi
+# L04: IS [NOT] NULL on paths that end in a relation or a complex property.
+cli_export -t bldg:Building -f "bldg:address IS NOT NULL"
+assert_export_ids "$(b 01 02 03 05)" "$OUT" bldg:Building "L04: IS NOT NULL on a relation"
+cli_export -t bldg:Building -f "con:height IS NOT NULL"
+assert_export_ids "$(b 01 02 03 04 05 06 07 08)" "$OUT" bldg:Building "L04: IS NOT NULL on a complex property"
 
 # L05: --sql-filter on its own (C08 in test_export_cql2.sh combines it with
-# -f; skipped on an empty result).
+# -f).
 OCID=$(db_query "SELECT id FROM objectclass WHERE classname = 'Building';")
-if cli_export --sql-filter "select id from feature where objectclass_id = $OCID" >/dev/null \
-    && [ "$(export_ids "$OUT" "$TOP")" = "" ]; then
-  skip_case "L05" "--sql-filter on its own returns no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
-else
-  cli_export --sql-filter "select id from feature where objectclass_id = $OCID"
-  assert_export_ids "$(b 01 02 03 04 05 06 07 08)" "$OUT" "$TOP" "L05: --sql-filter selects the buildings"
-fi
+cli_export --sql-filter "select id from feature where objectclass_id = $OCID"
+assert_export_ids "$(b 01 02 03 04 05 06 07 08)" "$OUT" "$TOP" "L05: --sql-filter selects the buildings"
 
-# L06: the backslash escapes the LIKE wildcards.  It must itself be escaped
-# inside the character literal, so a literal '_' is written as '\\_' in the
-# CQL2 text.  A single backslash is consumed by the character literal and
-# '\_' remains a wildcard (L06b).
+# L06: the backslash escapes the LIKE wildcards.  Inside the character
+# literal '\\' is an escaped backslash, so '\\_' matches a literal '_'.  A
+# backslash that does not start an escape sequence of the character literal
+# is kept, so '\_' matches a literal '_' as well (L06b).
 cli_export -f "core:objectId LIKE 'ROAD\\\\_CQL2\\\\_0%'"
 assert_export_ids "$(r 01 02)" "$OUT" "$TOP" "L06: '\\\\_' matches a literal underscore"
 cli_export -f "name LIKE 'Road\\\\_0%'"
 assert_export_ids "" "$OUT" "$TOP" "L06: '\\\\_' does not match a blank"
 cli_export -f "name LIKE 'Road\_0%'"
-assert_export_ids "$(r 01 02)" "$OUT" "$TOP" "L06b: '\\_' is still a wildcard"
+assert_export_ids "" "$OUT" "$TOP" "L06b: '\\_' escapes the wildcard as well"
 
-# L07: the empty string literal '' (skipped on a parse error).
-if cli_export -f "name <> ''" >/dev/null; then
-  assert_export_count 10 "$OUT" "$TOP" "L07: name <> '' matches all features"
-  cli_export -f "name = ''"
-  assert_export_count 0 "$OUT" "$TOP" "L07: name = '' matches nothing"
-elif grep -q "Failed to parse the provided CQL2 filter expression." "$EXPORT_LOG"; then
-  skip_case "L07" "the empty string literal '' is rejected by the parser; known issue of citydb-tool <= 1.4.0, fixed upstream"
-else
-  echo "FAIL: L07: unexpected error for the empty string literal"; tail -5 "$EXPORT_LOG"
-  report_line "- **FAIL:** L07: unexpected error for the empty string literal"
-  exit 1
-fi
+# L07: the empty string literal ''.
+cli_export -f "name <> ''"
+assert_export_count 10 "$OUT" "$TOP" "L07: name <> '' matches all features"
+cli_export -f "name = ''"
+assert_export_count 0 "$OUT" "$TOP" "L07: name = '' matches nothing"
 
 # L08-L09: timestamps are compared in UTC; offsets are converted, a missing
 # 'Z' means UTC (CQL2 only defines the 'Z' form, pinned deliberately).
@@ -509,17 +446,9 @@ assert_fails_with "Expected parameter for option" \
   citydb --config "$CFG" export citygml -o "$OUT" --filter "-storeys::int < -6"
 
 # X16: unknown filter CRS
-if cli_export --filter-crs 99999 -f "S_INTERSECTS(core:envelope, BBOX(1, 2, 3, 4))" >/dev/null; then
-  echo "FAIL: X16: unknown filter CRS - command succeeded unexpectedly"
-  report_line "- **FAIL:** X16: unknown filter CRS - command succeeded unexpectedly"
-  exit 1
-elif grep -q "NullPointerException" "$EXPORT_LOG"; then
-  skip_case "X16 (message)" "NullPointerException for an unknown filter CRS; known issue of citydb-tool 1.3.x, fixed in 1.4.0"
-else
-  assert_fails_with "The requested filter SRS is not supported." \
-    "X16: unknown filter CRS" \
-    citydb --config "$CFG" export citygml -o "$OUT" --filter-crs 99999 -f "S_INTERSECTS(core:envelope, BBOX(1, 2, 3, 4))"
-fi
+assert_fails_with "The requested filter SRS is not supported." \
+  "X16: unknown filter CRS" \
+  citydb --config "$CFG" export citygml -o "$OUT" --filter-crs 99999 -f "S_INTERSECTS(core:envelope, BBOX(1, 2, 3, 4))"
 
 # X17-X20: CQL2 JSON
 make_query_config "$CFG" "$JSON_CFG" '"filter": {"op": "s_intersects", "args": [{"property": "core:envelope"}, {"type": "Polygon", "coordinates": []}]}'
@@ -583,12 +512,8 @@ assert_export_ids "$STATION" "$OUT" bldg:Building "P07: boundary attribute AND s
 cli_export -t bldg:Building -f "bldg:buildingInstallation.core:objectId LIKE '%' AND core:boundary.core:name = 'Wall 9'"
 assert_export_ids "$STATION $CHAPEL" "$OUT" bldg:Building "P08: two different sub-feature relations"
 
-if [ "$SAMEPATH_OK" = "1" ]; then
-  cli_export -t bldg:Building -f "core:boundary.core:name = 'Roof 3' AND core:boundary.core:name = 'Wall 10'"
-  assert_export_ids "$CHAPEL" "$OUT" bldg:Building "P09: two conditions on different boundary surfaces"
-else
-  skip_case "P09" "$SAMEPATH_SKIP"
-fi
+cli_export -t bldg:Building -f "core:boundary.core:name = 'Roof 3' AND core:boundary.core:name = 'Wall 10'"
+assert_export_ids "$CHAPEL" "$OUT" bldg:Building "P09: two conditions on different boundary surfaces"
 
 cli_export -t con:RoofSurface -f "core:name = 'Roof 1'"
 assert_export_count 3 "$OUT" con:RoofSurface "P10: filter on a nested feature type"
@@ -610,12 +535,11 @@ assert_gt 0 "$EXPECTED_TOP" "P14: PostGIS finds top-level features in the statio
 cli_export -f "S_INTERSECTS(core:envelope, $STATION_BBOX)"
 assert_equals "$EXPECTED_TOP" "$(grep -c '<cityObjectMember>' "$OUT")" "P14: top-level result matches PostGIS ($EXPECTED_TOP features)"
 
-# P15: NOT on a multi-valued path is applied per value ("has a boundary
-# surface not named Roof 3"), not to the existence.  The semantics is still
-# open upstream (cf. O17/P09); the current behavior is pinned so that a
-# change is noticed.
+# P15: NOT on a multi-valued path negates the whole predicate ("has no
+# boundary surface named Roof 3") and requires the property to exist; the
+# station and the chapel both have a roof named Roof 3 (cf. O17/P09).
 cli_export -t bldg:Building -f "NOT core:boundary.core:name = 'Roof 3'"
-assert_export_ids "$BOAT $STATION $CHAPEL" "$OUT" bldg:Building "P15: NOT on a multi-valued path negates per value"
+assert_export_ids "$BOAT" "$OUT" bldg:Building "P15: NOT on a multi-valued path: no boundary surface named Roof 3"
 
 # X21-X22: limits of sub-feature paths
 assert_fails_with "is not a valid child of" \

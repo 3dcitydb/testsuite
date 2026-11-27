@@ -108,7 +108,9 @@ assert_equals "t" "$(db_query 'SELECT citydb_pkg.transform_or_null(NULL, 4326) I
 echo ""
 echo "--- S04: terminate_feature / delete_feature ---"
 
-db_query "SELECT citydb_pkg.terminate_feature($FID_B02, '{}'::jsonb, true);" > /dev/null
+# Since 3DCityDB 5.2, terminate_feature always terminates the contained
+# features as well (no cascade parameter).
+db_query "SELECT citydb_pkg.terminate_feature($FID_B02, '{}'::jsonb);" > /dev/null
 assert_equals "t" "$(db_query "SELECT termination_date IS NOT NULL FROM feature WHERE id = $FID_B02;")" \
   "S04: terminate_feature sets termination_date"
 

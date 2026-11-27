@@ -24,20 +24,30 @@ The test suite uses a Docker Compose multi-container setup:
 
 | Container | Image | Purpose |
 |-----------|-------|---------|
-| **db** | `3dcitydb/3dcitydb-pg:17-3.5-5.1.4` | PostgreSQL/PostGIS with 3DCityDB schema (SRID 25832) |
-| **test-*** | Custom (based on `3dcitydb/citydb-tool:1.4.0`) | Runs citydb-tool commands + psql for DB validation |
+| **db** | `3dcitydb/3dcitydb-pg:edge` | PostgreSQL/PostGIS with 3DCityDB schema (SRID 25832) |
+| **test-*** | Custom (based on `3dcitydb/citydb-tool:edge`) | Runs citydb-tool commands + psql for DB validation |
 
 The custom test image adds `postgresql-client` (psql), `libxml2-utils` (xmllint), `python3-jsonschema` and the schemas for export validation to the official citydb-tool image. The tests run as root inside the container, so files in `output/` are owned by root on Linux hosts. A health check on the DB container gates test execution until PostgreSQL is ready.
 
 ### Image Versions
 
-Both images are pinned so that test results (including the skipped cases) are reproducible. To test another release, override the versions via environment variables; `--build` is required when changing the tool version:
+The `main` branch tests the `edge` images of citydb-tool and 3dcitydb-pg, i.e. the current development state of both projects, and its expected results follow edge. The edge images change without a new tag, so pull them before a local run, otherwise Docker keeps using the copies it already has:
 
 ```bash
-CITYDB_TOOL_VERSION=1.3.2 CITYDB_PG_VERSION=17-3.5-5.1.0 docker compose up --build --exit-code-from test-all test-all
+docker pull 3dcitydb/citydb-tool:edge && docker pull 3dcitydb/3dcitydb-pg:edge
 ```
 
-The versions actually used are written to the header of every test report.
+Other image tags (e.g. a locally built citydb-tool image) can be selected via environment variables; `--build` is required when changing the tool version:
+
+```bash
+CITYDB_TOOL_VERSION=<tag> CITYDB_PG_VERSION=<tag> docker compose up --build --exit-code-from test-all test-all
+```
+
+The versions and image tags actually used are written to the header of every test report.
+
+citydb-tool releases are tested from the branch of their release line, because `main` expects behavior that only edge has. The test suite for citydb-tool 1.4 is kept on the branch `release-1.4` (pinned to citydb-tool 1.4.0 and 3dcitydb-pg 17-3.5-5.1.4, also runs with 1.4.1).
+
+The edge images of 3dcitydb-pg use PostgreSQL 18. Run `docker compose down -v` after updating from an older checkout and when switching between `main` and `release-1.4`; otherwise the db container does not start because its volume holds data of another PostgreSQL version.
 
 ### Schema Validation
 
@@ -338,9 +348,9 @@ testsuite/
 
 ## CI/CD Integration
 
-The GitHub Actions workflow `.github/workflows/testsuite.yml` runs the full suite with the pinned image versions on pushes to `main` and on pull requests. A nightly run uses the `latest` images instead, as an early warning when a new citydb-tool or 3dcitydb-pg release changes results.
+The GitHub Actions workflow `.github/workflows/testsuite.yml` runs the full suite against the edge images on pushes to `main` and on pull requests. A nightly run catches changes in the edge images, which happen without commits in this repository.
 
-Each run publishes the summary table of the report on the run page and uploads the complete `output/` directory (report and exports) as an artifact. A manual run (`workflow_dispatch`) accepts other image versions and skip keys, e.g. to check a new citydb-tool release before changing the pinned version.
+Each run publishes the digests of the tested images and the summary table of the report on the run page, so a failing run can be traced to a specific edge build, and uploads the complete `output/` directory (report and exports) as an artifact. A manual run (`workflow_dispatch`) accepts other image tags and skip keys.
 
 The `--exit-code-from` flag ensures the Docker Compose command returns non-zero on test failure, so the suite also fits into other CI systems:
 

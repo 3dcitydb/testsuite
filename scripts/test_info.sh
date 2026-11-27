@@ -9,19 +9,47 @@ INPUT_FILE=$(resolve_citygml_input "/data/synthetic/minimal_building.gml")
 CQL2_DATASET="/data/synthetic/cql2_features.gml"
 INFO_JSON="/output/info_report.json"
 
-# The info JSON is pretty-printed with one '"key":value' pair per line, so a
-# key can be looked up with grep (the container has no jq).  An optional
-# section key restricts the lookup to the lines after that key.
+# Print the first scalar value of a key in document order, looked up with
+# python3 (the container has no jq) and independent of the JSON formatting.
+# An optional section key restricts the lookup to the first object stored
+# under that key.  Strings are printed without quotes, booleans as
+# true/false; a missing key prints nothing.
 # Usage: json_value <file> <key> [<section key>]
 json_value() {
-  local file="$1"
-  local key="$2"
-  local section="${3:-}"
-  if [ -n "$section" ]; then
-    sed -n "/\"$section\":{/,\$p" "$file"
-  else
-    cat "$file"
-  fi | grep -m1 -oE "\"$key\":[^,{]+" | cut -d: -f2- | tr -d '"'
+  python3 - "$@" << 'EOF'
+import json
+import sys
+
+
+def find(node, key, want_object=False):
+    """Depth-first search in document order; returns (found, value)."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == key and isinstance(v, dict) == want_object and not isinstance(v, list):
+                return True, v
+            found, value = find(v, key, want_object)
+            if found:
+                return True, value
+    elif isinstance(node, list):
+        for item in node:
+            found, value = find(item, key, want_object)
+            if found:
+                return True, value
+    return False, None
+
+
+path, key = sys.argv[1], sys.argv[2]
+section = sys.argv[3] if len(sys.argv) > 3 else ""
+with open(path, encoding="utf-8") as f:
+    node = json.load(f)
+if section:
+    found, node = find(node, section, want_object=True)
+    if not found:
+        sys.exit(0)
+found, value = find(node, key)
+if found:
+    print(value if isinstance(value, str) else json.dumps(value))
+EOF
 }
 
 # Run 'citydb info' with JSON output and fail with the log on errors.

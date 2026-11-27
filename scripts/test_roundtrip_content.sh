@@ -20,10 +20,6 @@
 #   RT06  Railway scene, CityJSON: relativeToTerrain/Water kept, pinned loss
 #         of the TIN relief id, classes and geometries preserved
 #   RT07  a second CityGML 3.0 export has the same content as the first one
-#
-# Known issues of citydb-tool <= 1.4.0 that are fixed upstream are SKIPPED:
-# gen:function exported again as a generic attribute (RT02 props) and
-# relativeToTerrain/Water lost on sub-features in CityJSON (RT06).
 
 set -e
 
@@ -128,14 +124,9 @@ done
 # RT02: Railway scene, CityGML 3.0
 # ---------------------------------------------------------------------------
 roundtrip $RAILWAY citygml railway.gml
-for part in classes objids geoms addr app tex; do
+for part in classes props objids geoms addr app tex; do
   assert_same $part "RT02: Railway scene via CityGML 3.0, $part identical"
 done
-if grep -q '<gen:name>function</gen:name>' "$RT_DIR/railway.gml"; then
-  skip_case "RT02 (props)" "gen:function of GenericOccupiedSpace is exported with an additional generic attribute; known issue of citydb-tool <= 1.4.0, fixed upstream"
-else
-  assert_same props "RT02: Railway scene via CityGML 3.0, props identical"
-fi
 
 # ---------------------------------------------------------------------------
 # RT03-RT04: CityGML 2.0
@@ -188,17 +179,11 @@ assert_same classes "RT06: Railway scene via CityJSON, classes identical"
 assert_equals "$(echo "$ORIG_geoms" | cut -d' ' -f1-2)" "$(fp_geoms | cut -d' ' -f1-2)" \
   "RT06: geometry and point counts identical"
 # relativeToTerrain / relativeToWater: 197 values (47 on top-level
-# features, 150 on sub-features).  citydb-tool <= 1.4.0 does not write them
-# for semantic objects, so 81 values on sub-features are lost (skipped).
+# features, 150 on sub-features).
 RELATIVE_SQL="SELECT count(*) FROM property p JOIN feature f ON f.id = p.feature_id JOIN objectclass o ON o.id = f.objectclass_id WHERE p.name IN ('relativeToTerrain', 'relativeToWater')"
 assert_equals 47 "$(db_query "$RELATIVE_SQL AND o.is_toplevel = 1;")" \
   "RT06: relativeToTerrain / relativeToWater kept on top-level features"
-RELATIVE_ALL=$(db_query "$RELATIVE_SQL;")
-if [ "$RELATIVE_ALL" = "116" ]; then
-  skip_case "RT06 (sub-features)" "81 of 197 relativeToTerrain / relativeToWater values on sub-features are lost; known issue of citydb-tool <= 1.4.0, fixed upstream"
-else
-  assert_equals 197 "$RELATIVE_ALL" "RT06: all 197 relativeToTerrain / relativeToWater values kept"
-fi
+assert_equals 197 "$(db_query "$RELATIVE_SQL;")" "RT06: all 197 relativeToTerrain / relativeToWater values kept"
 assert_equals 0 "$(db_query "SELECT count(*) FROM feature WHERE objectid = 'GMLID_TIN436865_187531_1154';")" \
   "RT06: the TIN relief gets a new object id (pinned)"
 

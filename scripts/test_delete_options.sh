@@ -6,7 +6,8 @@
 #
 # Covered:
 #   DL01  --preview
-#   DL02  --no-terminate-all (sub-features stay valid)
+#   DL02  terminate without options terminates the sub-features as well
+#         (--no-terminate-all was removed)
 #   DL03  terminate with sub-features, --termination-date, --lineage,
 #         --updating-person, --reason-for-update
 #   DL04  -m delete removes sub-features, geometries and appearances
@@ -57,9 +58,9 @@ run_delete --preview -t bldg:Building
 assert_equals 231 "$(count_valid)" "DL01: --preview terminates nothing"
 assert_equals 1 "$(grep -c 'bldg:Building: 3' /tmp/delete_opt_last.log)" "DL01: preview reports 3 buildings"
 
-run_delete -t bldg:Building --no-terminate-all -f "core:name LIKE 'Station%'"
+run_delete -t bldg:Building -f "core:name LIKE 'Station%'"
 assert_equals 1 "$(count_terminated_class Building)" "DL02: station terminated"
-assert_equals 0 "$(count_terminated_class WallSurface)" "DL02: --no-terminate-all keeps the wall surfaces valid"
+assert_equals 9 "$(count_terminated_class WallSurface)" "DL02: the 9 wall surfaces of the station are terminated with it"
 
 # DL03: the chapel has 39 features in total (building, 2 installations,
 # 19 boundary surfaces, 17 openings).

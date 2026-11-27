@@ -3,7 +3,7 @@ x-tester-base: &tester-base
     context: .
     dockerfile: Dockerfile
     args:
-      CITYDB_TOOL_VERSION: ${CITYDB_TOOL_VERSION:-1.4.0}
+      CITYDB_TOOL_VERSION: ${CITYDB_TOOL_VERSION:-edge}
   volumes:
     - ./data:/data
     - ./output:/output
@@ -12,13 +12,16 @@ x-tester-base: &tester-base
   environment:
     - CITYGML_DATASET=${CITYGML_DATASET:-}
     - SKIP_TESTS=${SKIP_TESTS:-}
+    # image tags under test, shown in the report header
+    - CITYDB_TOOL_VERSION=${CITYDB_TOOL_VERSION:-edge}
+    - CITYDB_PG_VERSION=${CITYDB_PG_VERSION:-edge}
   depends_on:
     db:
       condition: service_healthy
 
 services:
   db:
-    image: 3dcitydb/3dcitydb-pg:${CITYDB_PG_VERSION:-17-3.5-5.1.4}
+    image: 3dcitydb/3dcitydb-pg:${CITYDB_PG_VERSION:-edge}
     environment:
       - POSTGRES_USER=citydb
       - POSTGRES_PASSWORD=test
@@ -179,6 +182,8 @@ services:
     environment:
       - CITYGML_DATASET=${CITYGML_DATASET:-}
       - SKIP_TESTS=${SKIP_TESTS:-}
+      - CITYDB_TOOL_VERSION=${CITYDB_TOOL_VERSION:-edge}
+      - CITYDB_PG_VERSION=${CITYDB_PG_VERSION:-edge}
       - BUILDING_COUNT=${BUILDING_COUNT:-10000}
     entrypoint: /bin/bash
     command: /scripts/test_perf.sh

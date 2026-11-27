@@ -1,6 +1,7 @@
-# Pinned citydb-tool version; override with the build arg CITYDB_TOOL_VERSION
-# (docker-compose passes it through from the environment).
-ARG CITYDB_TOOL_VERSION=1.4.0
+# citydb-tool version under test (default: edge, the current development
+# state); override with the build arg CITYDB_TOOL_VERSION (docker-compose
+# passes it through from the environment).
+ARG CITYDB_TOOL_VERSION=edge
 FROM 3dcitydb/citydb-tool:${CITYDB_TOOL_VERSION}
 
 # Switch to the root user to be able to install packages
