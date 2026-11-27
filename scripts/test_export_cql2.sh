@@ -17,12 +17,6 @@
 #            N08 became G09 and C02b)
 #   E01      unknown attribute without namespace prefix (pinned fallback)
 #   D01-D04  sorting, pagination, delete with CQL2 filter, validity filters
-#
-# Known issues of citydb-tool <= 1.4.0 that are fixed upstream are detected
-# at runtime via probes and SKIPPED: IS [NOT] NULL on untyped generic
-# attributes (T08, T09, T10, C09), SQL() expressions (C07, C08) and the z
-# range of 3D BBOXes (G05b).  T10b/C09b cover the same logical constructs
-# without IS NULL.
 
 set -e
 
@@ -69,34 +63,12 @@ assert_equals 4 "$(db_query "SELECT count(*) FROM address;")" "Setup: 4 addresse
 OCID=$(db_query "SELECT id FROM objectclass WHERE classname = 'Building';")
 
 # ---------------------------------------------------------------------------
-# Capability probes.  Probe the CQL2 constructs with an unexpected empty
-# result, so that affected cases skip cleanly and re-activate automatically
-# once the behavior changes.  Only a successful export with an empty result leads
-# to a skip; any other deviation runs the cases, so that they fail visibly.
+# Probe: unaccent extension for ACCENTI (install on demand if available).
 # ---------------------------------------------------------------------------
-
-# Probe 1: IS [NOT] NULL on untyped generic attributes (owner is set on 5
-# buildings).
-ISNULL_OK=1
-if cli_export "$OUT" -t bldg:Building -f "owner IS NOT NULL" >/dev/null \
-    && [ "$(count_gml_features "$OUT" 'bldg:Building')" = "0" ]; then
-  ISNULL_OK=0
-fi
-ISNULL_SKIP="IS [NOT] NULL on untyped generic attributes returns no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
-
-# Probe 2: SQL() expressions (a trivially-true subquery matches all 10 features).
-SQL_OK=1
-if cli_export "$OUT" -f "SQL('select id from feature')" >/dev/null \
-    && [ "$(export_ids "$OUT" 'bldg:Building,tran:Road')" = "" ]; then
-  SQL_OK=0
-fi
-SQL_SKIP="SQL() expressions return no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
-
-# Probe 3: unaccent extension for ACCENTI (install on demand if available).
 db_query "CREATE EXTENSION IF NOT EXISTS unaccent;" >/dev/null 2>&1 || true
 UNACCENT_OK=$(db_query "SELECT count(*) FROM pg_extension WHERE extname = 'unaccent';")
 
-echo "Probes: is-null-support=$ISNULL_OK sql-support=$SQL_OK unaccent=$UNACCENT_OK"
+echo "Probes: unaccent=$UNACCENT_OK"
 
 # ---------------------------------------------------------------------------
 # T01-T15: basic operators
@@ -128,18 +100,14 @@ assert_export_count 8 "$OUT" "bldg:Building,tran:Road" "T06: name LIKE 'Building
 cli_export "$OUT" -f "district IN ('Nord', 'Sued')"
 assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "T07: district IN ('Nord', 'Sued')"
 
-if [ "$ISNULL_OK" = "1" ]; then
-  cli_export "$OUT" -t bldg:Building -f "owner IS NULL"
-  assert_export_count 3 "$OUT" "bldg:Building" "T08: owner IS NULL (buildings only)"
+cli_export "$OUT" -t bldg:Building -f "owner IS NULL"
+assert_export_count 3 "$OUT" "bldg:Building" "T08: owner IS NULL (buildings only)"
 
-  cli_export "$OUT" -f "owner IS NOT NULL"
-  assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "T09: owner IS NOT NULL"
+cli_export "$OUT" -f "owner IS NOT NULL"
+assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "T09: owner IS NOT NULL"
 
-  cli_export "$OUT" -f "(district = 'Mitte' AND storeys::int > 2) OR NOT owner IS NULL"
-  assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "T10: AND/OR/NOT with parentheses"
-else
-  skip_case "T08/T09/T10" "$ISNULL_SKIP"
-fi
+cli_export "$OUT" -f "(district = 'Mitte' AND storeys::int > 2) OR NOT owner IS NULL"
+assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "T10: AND/OR/NOT with parentheses"
 
 # T10b: same logical construct (AND/OR/NOT + parentheses) without IS NULL.
 cli_export "$OUT" -f "(district = 'Mitte' AND storeys::int > 2) OR NOT district = 'Mitte'"
@@ -204,22 +172,14 @@ assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "C05b: S_BEYOND 200 m"
 cli_export "$OUT" -f "NOT S_DISJOINT(core:envelope, BBOX(458780, 5438330, 458860, 5438400))"
 assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "C06: NOT S_DISJOINT (== T12)"
 
-if [ "$SQL_OK" = "1" ]; then
-  cli_export "$OUT" -f "district = 'Mitte' AND SQL('select id from feature where objectclass_id = $OCID')"
-  assert_export_count 4 "$OUT" "bldg:Building,tran:Road" "C07: SQL() escape hatch"
+cli_export "$OUT" -f "district = 'Mitte' AND SQL('select id from feature where objectclass_id = $OCID')"
+assert_export_count 4 "$OUT" "bldg:Building,tran:Road" "C07: SQL() escape hatch"
 
-  cli_export "$OUT" -f "storeys::int > 2" --sql-filter "select id from feature where objectclass_id = $OCID"
-  assert_export_count 6 "$OUT" "bldg:Building,tran:Road" "C08: -f AND --sql-filter combined"
-else
-  skip_case "C07/C08" "$SQL_SKIP"
-fi
+cli_export "$OUT" -f "storeys::int > 2" --sql-filter "select id from feature where objectclass_id = $OCID"
+assert_export_count 6 "$OUT" "bldg:Building,tran:Road" "C08: -f AND --sql-filter combined"
 
-if [ "$ISNULL_OK" = "1" ]; then
-  cli_export "$OUT" -f "(CASEI(district) IN ('mitte','nord') AND NOT (owner IS NULL OR storeys::int < 2)) OR name LIKE 'Road 0_'"
-  assert_export_count 6 "$OUT" "bldg:Building,tran:Road" "C09: deep nesting + CASEI + LIKE wildcard _"
-else
-  skip_case "C09" "$ISNULL_SKIP"
-fi
+cli_export "$OUT" -f "(CASEI(district) IN ('mitte','nord') AND NOT (owner IS NULL OR storeys::int < 2)) OR name LIKE 'Road 0_'"
+assert_export_count 6 "$OUT" "bldg:Building,tran:Road" "C09: deep nesting + CASEI + LIKE wildcard _"
 
 # C09b: same constructs (CASEI, nesting, LIKE '_') without IS NULL.
 cli_export "$OUT" -f "(CASEI(district) IN ('mitte','nord') AND NOT (storeys::int < 2)) OR name LIKE 'Road 0_'"
@@ -267,14 +227,9 @@ cli_export "$OUT" -f "S_INTERSECTS(core:envelope, BBOX(458780, 5438330, -10, 458
 assert_export_count 5 "$OUT" "bldg:Building,tran:Road" "G05: 3D BBOX covering the z range (== T12)"
 
 # G05b: z 10..100 only intersects the envelopes of B03 (10.5 m) and B04
-# (14 m).  citydb-tool <= 1.4.0 ignores the z range (skipped on the 2D
-# result of G05).
+# (14 m).
 cli_export "$OUT" -f "S_INTERSECTS(core:envelope, BBOX(458780, 5438330, 10, 458860, 5438400, 100))"
-if [ "$(export_ids "$OUT" 'bldg:Building,tran:Road' | wc -w)" = "5" ]; then
-  skip_case "G05b" "the z range of a 3D BBOX is ignored; known issue of citydb-tool <= 1.4.0, fixed upstream"
-else
-  assert_export_ids "BLDG_CQL2_03 BLDG_CQL2_04" "$OUT" "bldg:Building,tran:Road" "G05b: 3D BBOX respects the z range"
-fi
+assert_export_ids "BLDG_CQL2_03 BLDG_CQL2_04" "$OUT" "bldg:Building,tran:Road" "G05b: 3D BBOX respects the z range"
 
 # G06: filter on the real geometry property instead of the envelope
 cli_export "$OUT" -t bldg:Building -f "S_INTERSECTS(core:lod2MultiSurface, BBOX(458780, 5438330, 458860, 5438400))"

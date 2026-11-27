@@ -20,10 +20,6 @@
 #   SP39-SP42  z range of 3D BBOXes, edge behavior, negative cases and
 #              geometry collections
 #   SP43       delete with spatial filters (runs last, modifies the data)
-#
-# Known issues of citydb-tool <= 1.4.0 that are fixed upstream are detected
-# at runtime and SKIPPED: negated spatial predicates on geometry properties
-# (SP28, SP29) and the z range of 3D BBOXes (SP39).
 
 set -e
 
@@ -71,15 +67,6 @@ echo "Import complete."
 assert_equals 7 "$(get_feature_count)" "Setup: 7 features imported"
 assert_equals "0 0 20 20" "$(db_query "SELECT st_xmin(envelope) - 460000, st_ymin(envelope) - 5439000, st_xmax(envelope) - 460000, st_ymax(envelope) - 5439000 FROM feature WHERE objectid = 'SP_L';" | tr -d '|' | xargs)" \
   "Setup: envelope of SP_L covers the notch"
-
-# Probe: negated spatial predicates on geometry properties.  Only an empty
-# result leads to a skip; any other deviation runs SP28/SP29 so that they
-# fail visibly.
-NEGGEOM_OK=1
-cli_export -t $B -f "S_DISJOINT(core:lod2MultiSurface, $NEAR_BBOX)" \
-  && [ "$(export_ids "$OUT" $B)" = "" ] && NEGGEOM_OK=0
-NEGGEOM_SKIP="NOT S_INTERSECTS / S_DISJOINT on geometry properties return no features; known issue of citydb-tool <= 1.4.0, fixed upstream"
-echo "Probes: negated-geometry-predicates=$NEGGEOM_OK"
 
 # ---------------------------------------------------------------------------
 # SP01-SP08: envelope vs geometry
@@ -212,14 +199,10 @@ assert_export_ids "$(sp FAR TOWER)" "$OUT" "$TOP" "SP27: OR of two spatial predi
 cli_export -f "S_DISJOINT(core:envelope, $NEAR_BBOX)"
 assert_export_ids "$(sp FAR TOWER)" "$OUT" "$TOP" "SP27b: S_DISJOINT on the envelope"
 
-if [ "$NEGGEOM_OK" = "1" ]; then
-  cli_export -t $B -f "S_DISJOINT(core:lod2MultiSurface, $NEAR_BBOX)"
-  assert_export_ids "$(sp FAR TOWER)" "$OUT" $B "SP28: S_DISJOINT on the geometry"
-  cli_export -t $B -f "NOT S_INTERSECTS(core:lod2MultiSurface, $NEAR_BBOX)"
-  assert_export_ids "$(sp FAR TOWER)" "$OUT" $B "SP29: NOT S_INTERSECTS on the geometry"
-else
-  skip_case "SP28/SP29" "$NEGGEOM_SKIP"
-fi
+cli_export -t $B -f "S_DISJOINT(core:lod2MultiSurface, $NEAR_BBOX)"
+assert_export_ids "$(sp FAR TOWER)" "$OUT" $B "SP28: S_DISJOINT on the geometry"
+cli_export -t $B -f "NOT S_INTERSECTS(core:lod2MultiSurface, $NEAR_BBOX)"
+assert_export_ids "$(sp FAR TOWER)" "$OUT" $B "SP29: NOT S_INTERSECTS on the geometry"
 
 cli_export -t $B -f "S_DWITHIN(core:envelope, $O, 300, 'm')" -s "storeys::int-" --limit 2
 assert_equals "SP_TOWER SP_COURTYARD" "$(ordered_ids "$OUT" "$TOP")" "SP30: spatial filter + sort + limit"
@@ -282,16 +265,11 @@ echo ""
 echo "--- 3D BBOX, edge and negative cases (SP39-SP42) ---"
 
 # SP39: the z range of a 3D BBOX on the envelope is respected; z 50..200
-# cuts the tower (z 0..100), z 150..200 lies above it.  citydb-tool <= 1.4.0
-# evaluates the BBOX in 2D (skipped on a match above the tower).
+# cuts the tower (z 0..100), z 150..200 lies above it.
 cli_export -f "S_INTERSECTS(core:envelope, BBOX(460190, 5439190, 50, 460220, 5439220, 200))"
 assert_export_ids "$(sp TOWER)" "$OUT" "$TOP" "SP39: 3D BBOX cutting the z range of the tower"
 cli_export -f "S_INTERSECTS(core:envelope, BBOX(460190, 5439190, 150, 460220, 5439220, 200))"
-if [ "$(export_ids "$OUT" "$TOP")" = "$(sp TOWER | xargs)" ]; then
-  skip_case "SP39 (above)" "the z range of a 3D BBOX is ignored; known issue of citydb-tool <= 1.4.0, fixed upstream"
-else
-  assert_export_ids "" "$OUT" "$TOP" "SP39: 3D BBOX above the tower matches nothing"
-fi
+assert_export_ids "" "$OUT" "$TOP" "SP39: 3D BBOX above the tower matches nothing"
 
 assert_fails_with "Failed to convert distance value." \
   "SP40: angular distance unit on a metric database CRS" \
