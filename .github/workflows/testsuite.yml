@@ -53,6 +53,22 @@ jobs:
             echo "CITYDB_PG_VERSION=$INPUT_PG_VERSION" >> "$GITHUB_ENV"
           fi
 
+      # The edge tags move without a new version, so the digests identify
+      # the builds a run has tested.  Pulling explicitly also makes sure the
+      # test image is built on the current tool image.
+      - name: Pull and record images
+        run: |
+          tool="3dcitydb/citydb-tool:${CITYDB_TOOL_VERSION:-edge}"
+          db="3dcitydb/3dcitydb-pg:${CITYDB_PG_VERSION:-edge}"
+          docker pull -q "$tool"
+          docker pull -q "$db"
+          {
+            echo "### Tested images"
+            echo ""
+            docker image inspect --format '- `{{index .RepoDigests 0}}` (created {{.Created}})' "$tool" "$db"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run test suite
         run: docker compose up --build --exit-code-from test-all test-all
 

@@ -76,7 +76,7 @@ assert_equals 3 "$(db_query "SELECT count(*) FROM property WHERE name = 'energy'
 db_query "CREATE EXTENSION IF NOT EXISTS unaccent;" >/dev/null 2>&1 || true
 UNACCENT_OK=$(db_query "SELECT count(*) FROM pg_extension WHERE extname = 'unaccent';")
 
-echo "Probes: division=$DIVISION_OK unary-minus=$UNARY_OK same-path-and=$SAMEPATH_OK unaccent=$UNACCENT_OK"
+echo "Probes: unaccent=$UNACCENT_OK"
 
 # ---------------------------------------------------------------------------
 # O01-O17: operators and expressions
